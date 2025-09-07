@@ -1,26 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, Button, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { useMetronome } from '../hooks/useMetronome';
-import { useSoundDetection } from '../hooks/useSoundDetection';
-import AudioService from '../services/audio';
+import { usePuttIQAudio } from '../hooks/usePuttIQAudio';
 import TimingBar from '../components/TimingBar';
 
 export default function HomeScreen({ user }) {
   const [isPremium, setIsPremium] = useState(user?.isPremium || false);
-  const { bpm, setBpm, isPlaying, toggle, currentBeat, startTime, beatCount, position, direction } = useMetronome(user?.settings?.defaultBPM || 80);
   const { 
+    bpm, 
+    updateBpm, 
+    isPlaying, 
+    toggle, 
+    beatCount, 
     isListening, 
     lastHit, 
-    hitAccuracy, 
-    currentVolume,
-    getAverageAccuracy 
-  } = useSoundDetection(isPlaying, bpm, startTime);
+    currentVolume 
+  } = usePuttIQAudio(user?.settings?.defaultBPM || 80);
 
   useEffect(() => {
-    // Initialize audio service on mount
-    AudioService.initialize();
-    
     // Update premium status when user changes
     setIsPremium(user?.isPremium || false);
   }, [user]);
@@ -38,18 +35,18 @@ export default function HomeScreen({ user }) {
       </View>
       
       {/* Timing Bar - moves with BPM */}
-      <TimingBar isPlaying={isPlaying} position={position} direction={direction} beatCount={beatCount} />
+      <TimingBar isPlaying={isPlaying} beatCount={beatCount} position={0} direction="forward" />
       
       <View style={styles.metronomeArea}>
         {/* Visual beat indicator */}
         <View style={styles.beatIndicator}>
           <View style={[
             styles.beatDot,
-            { backgroundColor: currentBeat === 0 ? '#2E7D32' : '#ccc' }
+            { backgroundColor: beatCount % 2 === 0 ? '#2E7D32' : '#ccc' }
           ]} />
           <View style={[
             styles.beatDot,
-            { backgroundColor: currentBeat === 1 ? '#2E7D32' : '#ccc' }
+            { backgroundColor: beatCount % 2 === 1 ? '#2E7D32' : '#ccc' }
           ]} />
         </View>
         
@@ -62,7 +59,7 @@ export default function HomeScreen({ user }) {
             minimumValue={60}
             maximumValue={100}
             value={bpm}
-            onValueChange={setBpm}
+            onValueChange={updateBpm}
             step={1}
             minimumTrackTintColor="#2E7D32"
             maximumTrackTintColor="#ccc"

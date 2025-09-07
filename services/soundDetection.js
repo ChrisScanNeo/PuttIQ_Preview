@@ -98,11 +98,13 @@ class SoundDetectionService {
         throw new Error('Microphone permission denied');
       }
 
-      // Configure audio mode for recording
+      // Configure audio mode for recording and speaker playback
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        interruptionModeIOS: 1, // InterruptionModeIOS.DoNotMix
         staysActiveInBackground: false,
+        interruptionModeAndroid: 1, // InterruptionModeAndroid.DoNotMix
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
       });

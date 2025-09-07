@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import Constants from 'expo-constants';
-import HomeScreenV2 from './screens/HomeScreenV2';
-import HomeScreenEnhanced from './screens/HomeScreenEnhanced';
+import HomeScreen from './screens/HomeScreen'; // Use the primary, refactored HomeScreen
 import { authenticateUser } from './services/auth';
 
 export default function App() {
@@ -53,10 +51,6 @@ export default function App() {
       </View>
     );
   }
-
-  // Use enhanced screen in dev client, regular screen in Expo Go
-  const isDevClient = Constants.executionEnvironment === 'storeClient';
-  const HomeScreen = isDevClient ? HomeScreenEnhanced : HomeScreenV2;
   
   return (
     <>
