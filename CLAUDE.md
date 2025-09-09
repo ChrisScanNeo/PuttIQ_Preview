@@ -449,3 +449,4 @@ eas build --platform android
 - Keep animations at 60 FPS for best user experience
 - Consider offline functionality for core features
 - Landscape orientation optimized for golf stance
+- when we make a change, andd it is readdy to test, commit it to git and push with notes, so I can sync my local device and test

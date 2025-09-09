@@ -23,7 +23,7 @@ export class Metronome {
       // Configure audio mode for simultaneous playback and recording
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
-        interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
+        interruptionModeIOS: 1, // Use numeric value: 1 = DO_NOT_MIX
         shouldDuckAndroid: true,
         staysActiveInBackground: false,
         allowsRecordingIOS: true, // Important: allow recording while playing

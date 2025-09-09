@@ -24,6 +24,7 @@ export function usePuttIQDetector(defaultBpm = 80) {
   const metronomeRef = useRef(null);
   const aecStreamRef = useRef(null);
   const detectorRef = useRef(null);
+  const statsIntervalRef = useRef(null);
 
   // Initialize services on mount
   useEffect(() => {
@@ -33,19 +34,27 @@ export function usePuttIQDetector(defaultBpm = 80) {
       try {
         console.log('Initializing PuttIQ detector...');
 
+        // Initialize metronome first (before permission request)
+        try {
+          metronomeRef.current = new Metronome();
+          await metronomeRef.current.load();
+          metronomeRef.current.setBpm(bpm);
+          console.log('Metronome initialized successfully');
+        } catch (metronomeError) {
+          console.error('Failed to initialize metronome:', metronomeError);
+          // Continue without metronome if it fails
+        }
+
         // Request microphone permission
         const permissionStatus = await requestMicrophonePermission();
         if (mounted) setPermissionGranted(permissionStatus);
 
         if (!permissionStatus) {
           console.warn('Microphone permission denied');
+          // Still mark as initialized even without mic permission
+          if (mounted) setInitialized(true);
           return;
         }
-
-        // Initialize metronome
-        metronomeRef.current = new Metronome();
-        await metronomeRef.current.load();
-        metronomeRef.current.setBpm(bpm);
 
         // Initialize detector with configuration
         detectorRef.current = new PutterDetector({
@@ -114,21 +123,29 @@ export function usePuttIQDetector(defaultBpm = 80) {
    */
   const requestMicrophonePermission = async () => {
     try {
+      // Skip permission request on web or unsupported platforms
+      if (Platform.OS === 'web') {
+        console.log('Web platform detected, skipping native permission request');
+        return true; // Assume granted for web
+      }
+
       const permission = Platform.select({
         ios: PERMISSIONS.IOS.MICROPHONE,
         android: PERMISSIONS.ANDROID.RECORD_AUDIO,
       });
 
       if (!permission) {
-        console.warn('Permission not defined for platform');
+        console.warn('Permission not defined for platform:', Platform.OS);
         return false;
       }
 
       const result = await request(permission);
-      return result === RESULTS.GRANTED;
+      console.log('Microphone permission result:', result);
+      return result === RESULTS.GRANTED || result === RESULTS.UNAVAILABLE; // UNAVAILABLE means not needed on this platform
     } catch (error) {
       console.error('Failed to request microphone permission:', error);
-      return false;
+      // Try to continue anyway in case it's a permission library issue
+      return true;
     }
   };
 
@@ -168,7 +185,7 @@ export function usePuttIQDetector(defaultBpm = 80) {
       setRunning(true);
       
       // Start stats monitoring
-      startStatsMonitoring();
+      statsIntervalRef.current = startStatsMonitoring();
       
     } catch (error) {
       console.error('Failed to start:', error);
@@ -223,6 +240,12 @@ export function usePuttIQDetector(defaultBpm = 80) {
         setAecActive(false);
       }
 
+      // Clear stats monitoring interval
+      if (statsIntervalRef.current) {
+        clearInterval(statsIntervalRef.current);
+        statsIntervalRef.current = null;
+      }
+
       setRunning(false);
       setLastHit(null);
       
@@ -268,18 +291,16 @@ export function usePuttIQDetector(defaultBpm = 80) {
   const startStatsMonitoring = useCallback(() => {
     if (!detectorRef.current) return;
 
-    const updateStats = () => {
-      if (detectorRef.current && isRunning) {
+    const intervalId = setInterval(() => {
+      if (detectorRef.current) {
         const stats = detectorRef.current.getStats();
         setDetectorStats(stats);
-        
-        // Continue monitoring
-        setTimeout(updateStats, 1000);
       }
-    };
+    }, 1000);
 
-    updateStats();
-  }, [isRunning]);
+    // Store interval ID for cleanup
+    return intervalId;
+  }, []);
 
   /**
    * Reset detector calibration
