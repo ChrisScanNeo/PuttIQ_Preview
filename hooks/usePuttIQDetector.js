@@ -3,8 +3,20 @@ import { Platform } from 'react-native';
 import { request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { Metronome } from '../services/audio/Metronome';
 import { enableAEC, disableAEC, isAECSupported } from '../services/audio/enableAEC';
-// Use the Expo-compatible detector instead of the Picovoice one
-import { PutterDetectorExpo as PutterDetector } from '../services/dsp/PutterDetectorExpo';
+
+// Try to use the Expo detector, fall back to simple if it fails
+let PutterDetector;
+try {
+  // First try the Expo audio stream detector
+  const { PutterDetectorExpo } = require('../services/dsp/PutterDetectorExpo');
+  PutterDetector = PutterDetectorExpo;
+  console.log('Using PutterDetectorExpo');
+} catch (e) {
+  console.warn('PutterDetectorExpo not available, using fallback:', e.message);
+  // Fall back to simple detector
+  const { PutterDetectorSimple } = require('../services/dsp/PutterDetectorSimple');
+  PutterDetector = PutterDetectorSimple;
+}
 
 /**
  * Enhanced PuttIQ detector hook using improved DSP services

@@ -1,12 +1,28 @@
 import { FilterCascade } from './Biquad';
 import { Platform } from 'react-native';
 
-// Try to use expo-audio-stream which is already working in the project
+// Import expo-audio-stream with proper handling
 let AudioStream = null;
+let ExpoAudioStream = null;
+
 try {
-  AudioStream = require('@cjblack/expo-audio-stream').default;
+  // Try different import methods
+  const audioStreamModule = require('@cjblack/expo-audio-stream');
+  AudioStream = audioStreamModule.default || audioStreamModule.AudioStream || audioStreamModule;
+  
+  // Also try named export
+  if (audioStreamModule.ExpoAudioStream) {
+    ExpoAudioStream = audioStreamModule.ExpoAudioStream;
+  }
+  
+  console.log('AudioStream module loaded:', {
+    hasDefault: !!audioStreamModule.default,
+    hasAudioStream: !!audioStreamModule.AudioStream,
+    hasExpoAudioStream: !!audioStreamModule.ExpoAudioStream,
+    keys: Object.keys(audioStreamModule)
+  });
 } catch (e) {
-  console.warn('expo-audio-stream not available:', e);
+  console.error('Failed to load expo-audio-stream:', e);
 }
 
 /**
@@ -98,8 +114,12 @@ export class PutterDetectorExpo {
       return;
     }
 
-    if (!AudioStream) {
-      throw new Error('Audio streaming not available. Make sure @cjblack/expo-audio-stream is installed.');
+    // Try to use whichever AudioStream is available
+    const AudioAPI = AudioStream || ExpoAudioStream;
+    
+    if (!AudioAPI) {
+      console.error('Audio streaming not available. AudioStream:', AudioStream, 'ExpoAudioStream:', ExpoAudioStream);
+      throw new Error('Audio streaming not available. Make sure @cjblack/expo-audio-stream is installed and properly linked.');
     }
 
     this.isRunning = true;
@@ -117,7 +137,7 @@ export class PutterDetectorExpo {
       };
 
       // Start audio stream with listener
-      await AudioStream.startRecording(options, this.handleAudioData);
+      await AudioAPI.startRecording(options, this.handleAudioData);
       
       console.log('PutterDetectorExpo started with config:', {
         sampleRate: this.opts.sampleRate,
@@ -140,8 +160,9 @@ export class PutterDetectorExpo {
     this.isRunning = false;
 
     try {
-      if (AudioStream) {
-        await AudioStream.stopRecording();
+      const AudioAPI = AudioStream || ExpoAudioStream;
+      if (AudioAPI) {
+        await AudioAPI.stopRecording();
       }
       
       console.log('PutterDetectorExpo stopped. Stats:', {
