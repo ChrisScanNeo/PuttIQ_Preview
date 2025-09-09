@@ -11,9 +11,11 @@
   "dependencies": {
     "@cjblack/expo-audio-stream": "^0.2.26",
     "@expo/metro-runtime": "^5.0.4",
+    "@picovoice/react-native-voice-processor": "^1.2.3",
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-native-community/slider": "4.5.6",
     "@react-native-firebase/app": "^23.2.1",
+    "@stream-io/react-native-webrtc": "^125.4.3",
     "expo": "~53.0.22",
     "expo-application": "^6.1.5",
     "expo-audio": "~0.4.9",
@@ -31,12 +33,15 @@
     "react-dom": "19.0.0",
     "react-native": "0.79.5",
     "react-native-gesture-handler": "~2.24.0",
+    "react-native-permissions": "^5.4.2",
     "react-native-reanimated": "~3.17.4",
     "react-native-svg": "15.11.2",
     "react-native-web": "^0.20.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "typescript": "~5.8.3",
+    "@types/react": "~19.0.10"
   },
   "private": true
 }

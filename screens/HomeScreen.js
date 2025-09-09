@@ -1,125 +1,88 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, Button, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { usePuttIQAudio } from '../hooks/usePuttIQAudio';
-import TimingBar from '../components/TimingBar';
+import { usePuttIQDetector } from '../hooks/usePuttIQDetector'; // Using the new detector hook
 
 export default function HomeScreen({ user }) {
   const [isPremium, setIsPremium] = useState(user?.isPremium || false);
-  const { 
-    bpm, 
-    updateBpm, 
-    isPlaying, 
-    toggle, 
-    beatCount, 
-    isListening, 
-    lastHit, 
-    currentVolume 
-  } = usePuttIQAudio(user?.settings?.defaultBPM || 80);
+  const {
+    isInitialized,
+    isRunning,
+    permissionGranted,
+    aecActive,
+    bpm,
+    lastHit,
+    updateBpm,
+    start,
+    stop,
+  } = usePuttIQDetector(user?.settings?.defaultBPM || 80) || {};
 
-  useEffect(() => {
-    // Update premium status when user changes
-    setIsPremium(user?.isPremium || false);
-  }, [user]);
+  const toggle = () => {
+    if (isRunning) {
+      stop();
+    } else {
+      start();
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeContainer}>
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-        <Text style={styles.title}>PuttIQ</Text>
-        {!isPremium && (
-          <TouchableOpacity style={styles.premiumBadge}>
-            <Text style={styles.premiumText}>🔒 Free Version</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      
-      {/* Timing Bar - moves with BPM */}
-      <TimingBar isPlaying={isPlaying} beatCount={beatCount} position={0} direction="forward" />
-      
-      <View style={styles.metronomeArea}>
-        {/* Visual beat indicator */}
-        <View style={styles.beatIndicator}>
-          <View style={[
-            styles.beatDot,
-            { backgroundColor: beatCount % 2 === 0 ? '#2E7D32' : '#ccc' }
-          ]} />
-          <View style={[
-            styles.beatDot,
-            { backgroundColor: beatCount % 2 === 1 ? '#2E7D32' : '#ccc' }
-          ]} />
+          <Text style={styles.title}>PuttIQ</Text>
+          {!isPremium && (
+            <TouchableOpacity style={styles.premiumBadge}>
+              <Text style={styles.premiumText}>🔒 Free Version</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        
-        <Text style={styles.bpmText}>Tempo: {bpm} BPM</Text>
-        
-        <View style={styles.sliderContainer}>
-          <Text>60</Text>
-          <Slider
-            style={styles.slider}
-            minimumValue={60}
-            maximumValue={100}
-            value={bpm}
-            onValueChange={updateBpm}
-            step={1}
-            minimumTrackTintColor="#2E7D32"
-            maximumTrackTintColor="#ccc"
-            disabled={isPlaying}
-          />
-          <Text>100</Text>
-        </View>
-      </View>
 
-      <TouchableOpacity 
-        style={[styles.playButton, isPlaying && styles.stopButton]}
-        onPress={toggle}
-      >
-        <Text style={styles.playButtonText}>
-          {isPlaying ? "⏹ STOP" : "▶️ START"}
-        </Text>
-      </TouchableOpacity>
-      
-        <View style={styles.feedbackContainer}>
-          <Text style={styles.feedbackText}>
-            {!isPlaying ? "Ready to start..." : 
-             isListening ? "Listening for hits..." : 
-             "Setting up microphone..."}
+        <View style={styles.metronomeArea}>
+          <Text style={styles.bpmText}>Tempo: {bpm} BPM</Text>
+          <View style={styles.sliderContainer}>
+            <Text>60</Text>
+            <Slider
+              style={styles.slider}
+              minimumValue={60}
+              maximumValue={100}
+              value={bpm}
+              onValueChange={updateBpm}
+              step={1}
+              minimumTrackTintColor="#2E7D32"
+              maximumTrackTintColor="#ccc"
+              disabled={isRunning}
+            />
+            <Text>100</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.playButton, isRunning && styles.stopButton, !isInitialized && styles.disabledButton]}
+          onPress={toggle}
+          disabled={!isInitialized}
+        >
+          <Text style={styles.playButtonText}>
+            {isRunning ? "⏹ STOP" : "▶️ START"}
           </Text>
-          
-          {lastHit && isPlaying && (
+        </TouchableOpacity>
+
+        <View style={styles.feedbackContainer}>
+          <Text style={styles.statusText}>
+            {!isInitialized ? "Initializing..." : 
+             !permissionGranted ? "Microphone permission needed" : 
+             aecActive ? "AEC Active" : "Ready"}
+          </Text>
+
+          {lastHit && isRunning && (
             <View style={styles.hitFeedback}>
-              <Text style={[
-                styles.hitTiming,
-                lastHit.timing === 'perfect' && styles.perfectTiming,
-                lastHit.timing === 'early' && styles.earlyTiming,
-                lastHit.timing === 'late' && styles.lateTiming,
-              ]}>
-                {lastHit.timing === 'perfect' ? '✓ PERFECT!' : 
-                 lastHit.timing === 'early' ? '← EARLY' : 
-                 '→ LATE'}
+              <Text style={styles.hitTiming}>Impact Detected!</Text>
+              <Text style={styles.hitAccuracy}>
+                Energy: {lastHit.energy.toFixed(4)}
               </Text>
               <Text style={styles.hitAccuracy}>
-                {lastHit.accuracy}% accurate
+                Latency: {lastHit.latencyMs.toFixed(2)}ms
               </Text>
             </View>
-          )}
-          
-          {isListening && (
-            <>
-              <View style={styles.volumeMeter}>
-                <View style={styles.volumeBar}>
-                  <View 
-                    style={[
-                      styles.volumeLevel,
-                      { width: `${Math.max(0, (currentVolume + 60) / 60 * 100)}%` }
-                    ]}
-                  />
-                </View>
-                <Text style={styles.volumeText}>Volume Level</Text>
-              </View>
-              <Text style={styles.filterInfo}>
-                🎧 Filtering metronome sounds • Hit between beats
-              </Text>
-            </>
           )}
         </View>
       </ScrollView>
@@ -187,74 +150,31 @@ const styles = StyleSheet.create({
   },
   feedbackContainer: {
     alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: 20,
+    marginBottom: 20,
+    minHeight: 100, // Ensure space for feedback
   },
-  feedbackText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
+  statusText: {
+    fontSize: 14,
+    color: '#888',
+    fontStyle: 'italic',
   },
   hitFeedback: {
     marginTop: 15,
     alignItems: 'center',
+    backgroundColor: '#E8F5E9', // Light green background for hit
+    padding: 10,
+    borderRadius: 8,
   },
   hitTiming: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  perfectTiming: {
     color: '#2E7D32',
-  },
-  earlyTiming: {
-    color: '#FF9800',
-  },
-  lateTiming: {
-    color: '#F44336',
   },
   hitAccuracy: {
     fontSize: 14,
-    color: '#666',
-  },
-  volumeMeter: {
-    marginTop: 15,
-    width: '80%',
-    alignItems: 'center',
-  },
-  volumeBar: {
-    width: '100%',
-    height: 8,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  volumeLevel: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
-  },
-  volumeText: {
-    fontSize: 12,
-    color: '#999',
+    color: '#555',
     marginTop: 4,
-  },
-  filterInfo: {
-    fontSize: 11,
-    color: '#666',
-    marginTop: 8,
-    fontStyle: 'italic',
-  },
-  beatIndicator: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 10,
-    gap: 20,
-  },
-  beatDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#ccc',
   },
   playButton: {
     backgroundColor: '#2E7D32',
@@ -266,6 +186,9 @@ const styles = StyleSheet.create({
   },
   stopButton: {
     backgroundColor: '#FF6B6B',
+  },
+  disabledButton: {
+    backgroundColor: '#ccc',
   },
   playButtonText: {
     color: 'white',

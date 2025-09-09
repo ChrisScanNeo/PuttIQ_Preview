@@ -1,20 +1,24 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 
-// TODO: Replace with your Firebase project configuration from Step 2
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY_HERE",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  measurementId: "YOUR_MEASUREMENT_ID"  // Optional
+  apiKey: "AIzaSyAm5ZKp3R_F2iftmJxj5y8_KZ0oJ4-jHhI",
+  authDomain: "puttiq.firebaseapp.com",
+  projectId: "puttiq",
+  storageBucket: "puttiq.firebasestorage.app",
+  messagingSenderId: "186271237439",
+  appId: "1:186271237439:web:b0e0fc33370f8966bc7f8a",
+  measurementId: "G-DZM5THQDQT"
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app;
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+} else {
+  app = getApp();
+}
 
 // Initialize Firestore
 const db = getFirestore(app);

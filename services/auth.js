@@ -8,25 +8,41 @@ import { Platform } from 'react-native';
 // Get unique device/app identifier
 export const getDeviceId = async () => {
   try {
+    let deviceId;
+
     if (Platform.OS === 'ios') {
-      // Use iOS vendor ID (persistent across app installs for same vendor)
-      return await Application.getIosIdForVendorAsync();
+      deviceId = await Application.getIosIdForVendorAsync();
     } else if (Platform.OS === 'android') {
-      // Use Android ID
-      return Application.androidId;
+      deviceId = Application.androidId;
     } else {
-      // For web, generate and store a unique ID
-      let webId = await AsyncStorage.getItem('webDeviceId');
-      if (!webId) {
-        webId = 'web_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-        await AsyncStorage.setItem('webDeviceId', webId);
+      // For web, try to get a stored ID first
+      deviceId = await AsyncStorage.getItem('webDeviceId');
+      if (!deviceId) {
+        deviceId = 'web_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        await AsyncStorage.setItem('webDeviceId', deviceId);
       }
-      return webId;
     }
+
+    // If the native ID is still null (e.g., on an emulator), use a stored fallback
+    if (!deviceId) {
+      deviceId = await AsyncStorage.getItem('fallbackDeviceId');
+      if (!deviceId) {
+        console.warn('Device ID was null, generating and saving a random fallback ID.');
+        deviceId = 'fallback_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        await AsyncStorage.setItem('fallbackDeviceId', deviceId);
+      }
+    }
+    return deviceId;
+
   } catch (error) {
     console.error('Error getting device ID:', error);
-    // Fallback to a generated ID
-    return 'fallback_' + Math.random().toString(36).substring(2);
+    // Final fallback in case of errors
+    let deviceId = await AsyncStorage.getItem('fallbackDeviceId');
+    if (!deviceId) {
+        deviceId = 'error_fallback_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        await AsyncStorage.setItem('fallbackDeviceId', deviceId);
+    }
+    return deviceId;
   }
 };
 
