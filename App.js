@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import HomeScreen from './screens/HomeScreen'; // Use the primary, refactored HomeScreen
+import AppNavigator from './navigation/AppNavigator';
 import { authenticateUser } from './services/auth';
 
 export default function App() {
@@ -54,7 +54,7 @@ export default function App() {
   
   return (
     <>
-      <HomeScreen user={user} />
+      <AppNavigator user={user} />
       <StatusBar style="auto" />
     </>
   );
