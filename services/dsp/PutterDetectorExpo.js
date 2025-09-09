@@ -1,26 +1,23 @@
 import { FilterCascade } from './Biquad';
 import { Platform } from 'react-native';
 
-// Import expo-audio-stream with proper handling
-let AudioStream = null;
-let ExpoAudioStream = null;
+// Import ExpoPlayAudioStream correctly as a named export
+let ExpoPlayAudioStream = null;
 
 try {
-  // Try different import methods
   const audioStreamModule = require('@cjblack/expo-audio-stream');
-  AudioStream = audioStreamModule.default || audioStreamModule.AudioStream || audioStreamModule;
   
-  // Also try named export
-  if (audioStreamModule.ExpoAudioStream) {
-    ExpoAudioStream = audioStreamModule.ExpoAudioStream;
-  }
+  // The correct export is ExpoPlayAudioStream (not ExpoAudioStream)
+  ExpoPlayAudioStream = audioStreamModule.ExpoPlayAudioStream;
   
   console.log('AudioStream module loaded:', {
-    hasDefault: !!audioStreamModule.default,
-    hasAudioStream: !!audioStreamModule.AudioStream,
-    hasExpoAudioStream: !!audioStreamModule.ExpoAudioStream,
+    hasExpoPlayAudioStream: !!audioStreamModule.ExpoPlayAudioStream,
     keys: Object.keys(audioStreamModule)
   });
+  
+  if (!ExpoPlayAudioStream) {
+    console.warn('ExpoPlayAudioStream not found in module, package may require native build');
+  }
 } catch (e) {
   console.error('Failed to load expo-audio-stream:', e);
 }
@@ -114,12 +111,9 @@ export class PutterDetectorExpo {
       return;
     }
 
-    // Try to use whichever AudioStream is available
-    const AudioAPI = AudioStream || ExpoAudioStream;
-    
-    if (!AudioAPI) {
-      console.error('Audio streaming not available. AudioStream:', AudioStream, 'ExpoAudioStream:', ExpoAudioStream);
-      throw new Error('Audio streaming not available. Make sure @cjblack/expo-audio-stream is installed and properly linked.');
+    if (!ExpoPlayAudioStream) {
+      console.error('ExpoPlayAudioStream not available. This package requires a custom dev build.');
+      throw new Error('Audio streaming not available. @cjblack/expo-audio-stream requires EAS Build or ejecting from Expo Go.');
     }
 
     this.isRunning = true;
@@ -127,17 +121,21 @@ export class PutterDetectorExpo {
     this.detectionCount = 0;
 
     try {
-      // Configure audio stream
-      const options = {
+      // Configure recording according to ExpoPlayAudioStream API
+      const recordingConfig = {
         sampleRate: this.opts.sampleRate,
         channels: 1, // Mono
-        bitsPerSample: 16,
-        audioSource: 6, // VOICE_RECOGNITION - optimized for speech/impact detection
-        bufferSize: this.opts.frameLength * 2, // Buffer size in bytes (16-bit = 2 bytes per sample)
+        bitsPerChannel: 16,
+        interval: 100, // Callback interval in ms
+        onAudioStream: (audioData) => {
+          // Handle incoming audio data
+          this.handleAudioData(audioData);
+        }
       };
 
-      // Start audio stream with listener
-      await AudioAPI.startRecording(options, this.handleAudioData);
+      // Start recording using the correct API
+      const result = await ExpoPlayAudioStream.startRecording(recordingConfig);
+      this.subscription = result.subscription;
       
       console.log('PutterDetectorExpo started with config:', {
         sampleRate: this.opts.sampleRate,
@@ -160,9 +158,15 @@ export class PutterDetectorExpo {
     this.isRunning = false;
 
     try {
-      const AudioAPI = AudioStream || ExpoAudioStream;
-      if (AudioAPI) {
-        await AudioAPI.stopRecording();
+      // Stop recording if available
+      if (ExpoPlayAudioStream) {
+        await ExpoPlayAudioStream.stopRecording();
+      }
+      
+      // Clean up subscription
+      if (this.subscription) {
+        this.subscription.remove();
+        this.subscription = null;
       }
       
       console.log('PutterDetectorExpo stopped. Stats:', {
@@ -176,17 +180,25 @@ export class PutterDetectorExpo {
 
   /**
    * Handle incoming audio data from expo-audio-stream
-   * @param {Object} data - Audio data object with base64 encoded audio
+   * @param {Object} audioData - Audio data object from ExpoPlayAudioStream
    */
-  handleAudioData(data) {
+  handleAudioData(audioData) {
     if (!this.isRunning) return;
 
     try {
+      // ExpoPlayAudioStream provides data in the 'data' field as base64
+      const base64Audio = audioData.data;
+      
+      if (!base64Audio) {
+        console.warn('No audio data in callback');
+        return;
+      }
+      
       // Convert base64 to Int16Array
-      const audioData = this.base64ToInt16Array(data.audio);
+      const samples = this.base64ToInt16Array(base64Audio);
       
       // Process the audio frame
-      this.handleFrame(audioData);
+      this.handleFrame(samples);
     } catch (error) {
       console.error('Error processing audio data:', error);
     }

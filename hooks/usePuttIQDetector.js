@@ -3,20 +3,7 @@ import { Platform } from 'react-native';
 import { request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { Metronome } from '../services/audio/Metronome';
 import { enableAEC, disableAEC, isAECSupported } from '../services/audio/enableAEC';
-
-// Try to use the Expo detector, fall back to simple if it fails
-let PutterDetector;
-try {
-  // First try the Expo audio stream detector
-  const { PutterDetectorExpo } = require('../services/dsp/PutterDetectorExpo');
-  PutterDetector = PutterDetectorExpo;
-  console.log('Using PutterDetectorExpo');
-} catch (e) {
-  console.warn('PutterDetectorExpo not available, using fallback:', e.message);
-  // Fall back to simple detector
-  const { PutterDetectorSimple } = require('../services/dsp/PutterDetectorSimple');
-  PutterDetector = PutterDetectorSimple;
-}
+import { DetectorFactory } from '../services/dsp/DetectorFactory';
 
 /**
  * Enhanced PuttIQ detector hook using improved DSP services
@@ -69,28 +56,39 @@ export function usePuttIQDetector(defaultBpm = 80) {
           return;
         }
 
-        // Initialize detector with configuration
-        detectorRef.current = new PutterDetector({
-          sampleRate: 16000,
-          frameLength: 256,
-          refractoryMs: 250,
-          energyThresh: 6,
-          zcrThresh: 0.22,
-          tickGuardMs: 30,
-          getUpcomingTicks: () => {
-            return metronomeRef.current ? metronomeRef.current.getNextTicks(8) : [];
-          },
-          onStrike: (strikeEvent) => {
-            console.log('Strike detected:', strikeEvent);
-            if (mounted) {
-              setLastHit(strikeEvent);
-              // Auto-clear hit display after 2 seconds
-              setTimeout(() => {
-                if (mounted) setLastHit(null);
-              }, 2000);
+        // Initialize detector using factory
+        try {
+          const detectorOptions = {
+            sampleRate: 16000,
+            frameLength: 256,
+            refractoryMs: 250,
+            energyThresh: 6,
+            zcrThresh: 0.22,
+            tickGuardMs: 30,
+            getUpcomingTicks: () => {
+              return metronomeRef.current ? metronomeRef.current.getNextTicks(8) : [];
+            },
+            onStrike: (strikeEvent) => {
+              console.log('Strike detected:', strikeEvent);
+              if (mounted) {
+                setLastHit(strikeEvent);
+                // Auto-clear hit display after 2 seconds
+                setTimeout(() => {
+                  if (mounted) setLastHit(null);
+                }, 2000);
+              }
             }
-          }
-        });
+          };
+          
+          detectorRef.current = await DetectorFactory.createDetector(detectorOptions);
+          
+          // Log detector capabilities
+          const capabilities = await DetectorFactory.getCapabilities();
+          console.log('Detector capabilities:', capabilities);
+        } catch (detectorError) {
+          console.error('Failed to create detector:', detectorError);
+          // Continue without detector if it fails
+        }
 
         if (mounted) {
           setInitialized(true);
