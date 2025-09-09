@@ -1,14 +1,15 @@
-# PuttIQ2 - Putting Rhythm Trainer
+# PuttIQ - Advanced Golf Putting Rhythm Trainer
 
-A professional-grade React Native app that helps golfers perfect their putting rhythm through visual and audio feedback.
+A professional React Native app that helps golfers perfect their putting rhythm using intelligent audio detection, metronome training, and personalized sound profiles.
 
-## ✨ Features
+## ✨ Key Features
 
-- **Visual Metronome Bar** - Animated timing bar with synchronized movement
-- **Audio Metronome** - Precise BPM control (60-100 BPM)
-- **Hit Detection** - Real-time microphone analysis for putter impact timing
-- **Timing Feedback** - Early/Late/Perfect hit accuracy display
-- **Native Audio Module** - Guaranteed speaker output (no earpiece routing)
+- **Smart Impact Detection** - Real-time putter-ball impact detection using advanced DSP
+- **Intelligent Filtering** - Filters out metronome sounds using spectral analysis
+- **Custom Sound Profiles** - Record your putter signature for personalized detection
+- **Adjustable Metronome** - Precise BPM control (60-100 BPM) with audio/visual feedback
+- **Test Mode** - Debug view showing real-time similarity scores and metrics
+- **Offline Support** - Works without internet using cached profiles
 - **Landscape Mode** - Optimized for golf stance positioning
 
 ## 🚀 Quick Start
