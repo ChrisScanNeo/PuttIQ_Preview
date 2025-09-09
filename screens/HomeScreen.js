@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector'; // Using the new detector hook
 
 export default function HomeScreen({ user }) {
   const [isPremium, setIsPremium] = useState(user?.isPremium || false);
+  const [sensitivity, setSensitivity] = useState(0.5);
+  
   const {
     isInitialized,
     isRunning,
@@ -12,10 +14,21 @@ export default function HomeScreen({ user }) {
     aecActive,
     bpm,
     lastHit,
+    detectorStats,
     updateBpm,
+    updateSensitivity,
+    getTimingAccuracy,
+    resetCalibration,
     start,
     stop,
   } = usePuttIQDetector(user?.settings?.defaultBPM || 80) || {};
+
+  // Update sensitivity when slider changes
+  useEffect(() => {
+    if (updateSensitivity) {
+      updateSensitivity(sensitivity);
+    }
+  }, [sensitivity, updateSensitivity]);
 
   const toggle = () => {
     if (isRunning) {
@@ -23,6 +36,27 @@ export default function HomeScreen({ user }) {
     } else {
       start();
     }
+  };
+
+  // Calculate timing accuracy
+  const timingInfo = getTimingAccuracy ? getTimingAccuracy() : null;
+
+  // Get quality color based on hit quality
+  const getQualityColor = (quality) => {
+    switch (quality) {
+      case 'strong': return '#2E7D32';
+      case 'medium': return '#FFA726';
+      case 'weak': return '#EF5350';
+      default: return '#888';
+    }
+  };
+
+  // Get timing color based on accuracy
+  const getTimingColor = (accuracy) => {
+    if (!accuracy) return '#888';
+    if (accuracy > 0.8) return '#2E7D32'; // Great
+    if (accuracy > 0.5) return '#FFA726'; // Good
+    return '#EF5350'; // Needs work
   };
 
   return (
@@ -40,7 +74,7 @@ export default function HomeScreen({ user }) {
         <View style={styles.metronomeArea}>
           <Text style={styles.bpmText}>Tempo: {bpm} BPM</Text>
           <View style={styles.sliderContainer}>
-            <Text>60</Text>
+            <Text style={styles.sliderLabel}>60</Text>
             <Slider
               style={styles.slider}
               minimumValue={60}
@@ -52,36 +86,113 @@ export default function HomeScreen({ user }) {
               maximumTrackTintColor="#ccc"
               disabled={isRunning}
             />
-            <Text>100</Text>
+            <Text style={styles.sliderLabel}>100</Text>
           </View>
+
+          {!isRunning && (
+            <View style={styles.sensitivityContainer}>
+              <Text style={styles.sensitivityLabel}>Detection Sensitivity</Text>
+              <View style={styles.sliderContainer}>
+                <Text style={styles.sliderLabel}>Low</Text>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={0}
+                  maximumValue={1}
+                  value={sensitivity}
+                  onValueChange={setSensitivity}
+                  step={0.1}
+                  minimumTrackTintColor="#FF9800"
+                  maximumTrackTintColor="#ccc"
+                />
+                <Text style={styles.sliderLabel}>High</Text>
+              </View>
+            </View>
+          )}
         </View>
 
-        <TouchableOpacity
-          style={[styles.playButton, isRunning && styles.stopButton, !isInitialized && styles.disabledButton]}
-          onPress={toggle}
-          disabled={!isInitialized}
-        >
-          <Text style={styles.playButtonText}>
-            {isRunning ? "⏹ STOP" : "▶️ START"}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.controlsRow}>
+          <TouchableOpacity
+            style={[styles.playButton, isRunning && styles.stopButton, !isInitialized && styles.disabledButton]}
+            onPress={toggle}
+            disabled={!isInitialized}
+          >
+            <Text style={styles.playButtonText}>
+              {isRunning ? "⏹ STOP" : "▶️ START"}
+            </Text>
+          </TouchableOpacity>
+
+          {!isRunning && isInitialized && (
+            <TouchableOpacity
+              style={styles.calibrateButton}
+              onPress={resetCalibration}
+            >
+              <Text style={styles.calibrateButtonText}>🎯 Calibrate</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <View style={styles.feedbackContainer}>
-          <Text style={styles.statusText}>
-            {!isInitialized ? "Initializing..." : 
-             !permissionGranted ? "Microphone permission needed" : 
-             aecActive ? "AEC Active" : "Ready"}
-          </Text>
+          <View style={styles.statusRow}>
+            <Text style={[styles.statusText, !isInitialized && styles.statusWarning]}>
+              {!isInitialized ? "⏳ Initializing..." : 
+               !permissionGranted ? "🎤 Microphone permission needed" : 
+               isRunning ? "🎯 Listening for impacts..." : "✅ Ready"}
+            </Text>
+            {isRunning && aecActive && (
+              <Text style={styles.aecIndicator}>🔊 AEC</Text>
+            )}
+          </View>
 
           {lastHit && isRunning && (
-            <View style={styles.hitFeedback}>
-              <Text style={styles.hitTiming}>Impact Detected!</Text>
-              <Text style={styles.hitAccuracy}>
-                Energy: {lastHit.energy.toFixed(4)}
-              </Text>
-              <Text style={styles.hitAccuracy}>
-                Latency: {lastHit.latencyMs.toFixed(2)}ms
-              </Text>
+            <View style={[styles.hitFeedback, { borderColor: getQualityColor(lastHit.quality) }]}>
+              <View style={styles.hitHeader}>
+                <Text style={[styles.hitTiming, { color: getQualityColor(lastHit.quality) }]}>
+                  Impact Detected!
+                </Text>
+                <Text style={[styles.qualityBadge, { backgroundColor: getQualityColor(lastHit.quality) }]}>
+                  {lastHit.quality?.toUpperCase()}
+                </Text>
+              </View>
+
+              {timingInfo && (
+                <View style={styles.timingRow}>
+                  <Text style={[styles.timingText, { color: getTimingColor(timingInfo.accuracy) }]}>
+                    {timingInfo.isEarly ? '⏪ Early' : timingInfo.isLate ? 'Late ⏩' : 'Perfect!'} 
+                  </Text>
+                  <Text style={styles.timingValue}>
+                    {Math.abs(timingInfo.timingDiff).toFixed(0)}ms
+                  </Text>
+                  <Text style={[styles.accuracyText, { color: getTimingColor(timingInfo.accuracy) }]}>
+                    {(timingInfo.accuracy * 100).toFixed(0)}%
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.hitDetails}>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Energy</Text>
+                  <Text style={styles.detailValue}>{lastHit.energy.toFixed(4)}</Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Confidence</Text>
+                  <Text style={styles.detailValue}>{(lastHit.confidence * 100).toFixed(0)}%</Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>ZCR</Text>
+                  <Text style={styles.detailValue}>{lastHit.zcr.toFixed(3)}</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {detectorStats && isRunning && (
+            <View style={styles.statsContainer}>
+              <Text style={styles.statsTitle}>Session Stats</Text>
+              <View style={styles.statsRow}>
+                <Text style={styles.statsLabel}>Hits: {detectorStats.detectionsFound}</Text>
+                <Text style={styles.statsLabel}>Frames: {detectorStats.framesProcessed}</Text>
+                <Text style={styles.statsLabel}>Baseline: {detectorStats.currentBaseline.toFixed(6)}</Text>
+              </View>
             </View>
           )}
         </View>
@@ -134,55 +245,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bpmText: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '600',
     marginBottom: 10,
+    color: '#333',
   },
   sliderContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
-    marginBottom: 15,
+    marginBottom: 10,
+  },
+  sliderLabel: {
+    fontSize: 12,
+    color: '#666',
+    minWidth: 25,
   },
   slider: {
     flex: 1,
     height: 40,
     marginHorizontal: 10,
   },
-  feedbackContainer: {
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 20,
-    minHeight: 100, // Ensure space for feedback
-  },
-  statusText: {
-    fontSize: 14,
-    color: '#888',
-    fontStyle: 'italic',
-  },
-  hitFeedback: {
+  sensitivityContainer: {
+    width: '100%',
     marginTop: 15,
-    alignItems: 'center',
-    backgroundColor: '#E8F5E9', // Light green background for hit
-    padding: 10,
-    borderRadius: 8,
   },
-  hitTiming: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#2E7D32',
-  },
-  hitAccuracy: {
+  sensitivityLabel: {
     fontSize: 14,
-    color: '#555',
-    marginTop: 4,
+    color: '#666',
+    marginBottom: 5,
+    textAlign: 'center',
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 15,
+    marginTop: 10,
   },
   playButton: {
     backgroundColor: '#2E7D32',
     paddingHorizontal: 35,
     paddingVertical: 12,
     borderRadius: 25,
-    marginTop: 10,
-    alignSelf: 'center',
   },
   stopButton: {
     backgroundColor: '#FF6B6B',
@@ -195,5 +300,133 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  calibrateButton: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  calibrateButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  feedbackContainer: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 20,
+    minHeight: 100,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  statusWarning: {
+    color: '#FF9800',
+  },
+  aecIndicator: {
+    fontSize: 12,
+    color: '#4CAF50',
+    fontWeight: '600',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  hitFeedback: {
+    marginTop: 15,
+    width: '100%',
+    backgroundColor: '#F5F5F5',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#2E7D32',
+  },
+  hitHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  hitTiming: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  qualityBadge: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  timingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E0E0E0',
+    marginBottom: 10,
+  },
+  timingText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  timingValue: {
+    fontSize: 14,
+    color: '#666',
+  },
+  accuracyText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  hitDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  detailItem: {
+    alignItems: 'center',
+  },
+  detailLabel: {
+    fontSize: 11,
+    color: '#888',
+    marginBottom: 2,
+  },
+  detailValue: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '500',
+  },
+  statsContainer: {
+    marginTop: 15,
+    padding: 10,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    width: '100%',
+  },
+  statsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 5,
+    textAlign: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statsLabel: {
+    fontSize: 11,
+    color: '#888',
   },
 });

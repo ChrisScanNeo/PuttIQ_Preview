@@ -1,218 +1,347 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import { Audio } from 'expo-av';
-import VoiceProcessor from '@picovoice/react-native-voice-processor';
+import { request, PERMISSIONS, RESULTS } from 'react-native-permissions';
+import { Metronome } from '../services/audio/Metronome';
+import { enableAEC, disableAEC, isAECSupported } from '../services/audio/enableAEC';
+import { PutterDetector } from '../services/dsp/PutterDetector';
 
-// Only import WebRTC on native; some bundlers choke on web imports
-let mediaDevices = null;
-if (Platform.OS === 'ios' || Platform.OS === 'android') {
-  try {
-    // prefer stream-io fork; fallback to classic if needed
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    mediaDevices = require('@stream-io/react-native-webrtc').mediaDevices ?? require('react-native-webrtc').mediaDevices;
-  } catch (e) {
-    console.warn('Failed to load mediaDevices', e);
-    mediaDevices = null;
-  }
-}
-
-// ---- Minimal metronome (object-returning, no array destructuring) ----
-class Metronome {
-  constructor(uri) { this.uri = uri; }
-  async load() {
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      allowsRecordingIOS: true,
-      shouldDuckAndroid: true,
-      interruptionModeIOS: 1,
-      staysActiveInBackground: false,
-    });
-    const created = await Audio.Sound.createAsync({ uri: this.uri }, { volume: 1.0 });
-    this.sound = created.sound; // <- object property access (safe)
-  }
-  setBpm(bpm) { this.bpm = Math.max(40, Math.min(200, bpm)); }
-  start() {
-    if (!this.sound || this.raf) return;
-    const period = 60000 / this.bpm;
-    this.nextTickAt = performance.now() + 200;
-    const loop = async () => {
-      const now = performance.now();
-      if (now >= this.nextTickAt - 5) {
-        try { await this.sound.replayAsync(); } catch {} // eslint-disable-line no-empty
-        this.nextTickAt += period;
-      }
-      this.raf = requestAnimationFrame(loop);
-    };
-    this.raf = requestAnimationFrame(loop);
-  }
-  stop() { if (this.raf) cancelAnimationFrame(this.raf); this.raf = null; }
-  getNextTicks(n = 8) {
-    const out = [];
-    const period = 60000 / this.bpm;
-    let t = this.nextTickAt || performance.now();
-    for (let i = 0; i < n; i++) { out.push(t); t += period; }
-    return out;
-  }
-  async dispose() { this.stop(); await this.sound?.unloadAsync(); this.sound = null; }
-}
-
-// ---- Simple high-pass + transient detector (no array destructuring anywhere) ----
-class HPF {
-  constructor() { this.a0=1; this.a1=0; this.a2=0; this.b1=0; this.b2=0; this.z1=0; this.z2=0; }
-  static highpass(sr, fc, q = 0.707) {
-    const f = new HPF();
-    const w0 = 2*Math.PI*fc/sr, alpha = Math.sin(w0)/(2*q), c = Math.cos(w0);
-    const b0=(1+c)/2, b1=-(1+c), b2=(1+c)/2, a0=1+alpha, a1=-2*c, a2=1-alpha;
-    f.a0=b0/a0; f.a1=b1/a0; f.a2=b2/a0; f.b1=a1/a0; f.b2=a2/a0;
-    return f;
-  }
-  process(x) { const y=this.a0*x+this.a1*this.z1+this.a2*this.z2 - this.b1*this.z1 - this.b2*this.z2; this.z2=this.z1; this.z1=y; return y; }
-}
-
+/**
+ * Enhanced PuttIQ detector hook using improved DSP services
+ * @param {number} defaultBpm - Default BPM setting
+ * @returns {Object} Hook state and methods
+ */
 export function usePuttIQDetector(defaultBpm = 80) {
+  // State management
   const [isInitialized, setInitialized] = useState(false);
-  const [permissionGranted, setPerm] = useState(false);
-  const [aecActive, setAec] = useState(false);
+  const [permissionGranted, setPermissionGranted] = useState(false);
+  const [aecActive, setAecActive] = useState(false);
   const [isRunning, setRunning] = useState(false);
   const [bpm, setBpm] = useState(defaultBpm);
   const [lastHit, setLastHit] = useState(null);
+  const [detectorStats, setDetectorStats] = useState(null);
 
-  const metRef = useRef(null);
+  // Service references
+  const metronomeRef = useRef(null);
   const aecStreamRef = useRef(null);
-  const hpRef = useRef(null);
-  const baselineRef = useRef(1e-6);
-  const lastHitAtRef = useRef(0);
+  const detectorRef = useRef(null);
 
-  // Initialize once
+  // Initialize services on mount
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      try {
-        const tickUri = 'https://cdn.jsdelivr.net/gh/anars/blank-audio/1-second-of-silence.mp3'; // replace with short tick in real app
-        metRef.current = new Metronome(tickUri);
-        await metRef.current.load();
-        metRef.current.setBpm(bpm);
 
-        // Request mic permission via VoiceProcessor (Android) or react-native-permissions if you prefer
-        try {
-          // VoiceProcessor will request its own permission on start; we can soft-check by just setting true for now.
-          setPerm(true);
-        } catch (e) {
-          console.warn('VoiceProcessor permission check failed', e);
-          setPerm(false);
+    const initialize = async () => {
+      try {
+        console.log('Initializing PuttIQ detector...');
+
+        // Request microphone permission
+        const permissionStatus = await requestMicrophonePermission();
+        if (mounted) setPermissionGranted(permissionStatus);
+
+        if (!permissionStatus) {
+          console.warn('Microphone permission denied');
+          return;
         }
 
-        hpRef.current = HPF.highpass(16000, 1000);
-        if (mounted) setInitialized(true);
-      } catch (e) {
-        console.warn('Detector init failed', e);
+        // Initialize metronome
+        metronomeRef.current = new Metronome();
+        await metronomeRef.current.load();
+        metronomeRef.current.setBpm(bpm);
+
+        // Initialize detector with configuration
+        detectorRef.current = new PutterDetector({
+          sampleRate: 16000,
+          frameLength: 256,
+          refractoryMs: 250,
+          energyThresh: 6,
+          zcrThresh: 0.22,
+          tickGuardMs: 30,
+          getUpcomingTicks: () => {
+            return metronomeRef.current ? metronomeRef.current.getNextTicks(8) : [];
+          },
+          onStrike: (strikeEvent) => {
+            console.log('Strike detected:', strikeEvent);
+            if (mounted) {
+              setLastHit(strikeEvent);
+              // Auto-clear hit display after 2 seconds
+              setTimeout(() => {
+                if (mounted) setLastHit(null);
+              }, 2000);
+            }
+          }
+        });
+
+        if (mounted) {
+          setInitialized(true);
+          console.log('PuttIQ detector initialized successfully');
+        }
+      } catch (error) {
+        console.error('Failed to initialize detector:', error);
         if (mounted) setInitialized(false);
       }
-    })();
-    return () => { mounted = false; metRef.current?.dispose(); };
-  }, []);
+    };
 
-  const enableAEC = useCallback(async () => {
-    if (!mediaDevices) return false;
+    initialize();
+
+    // Cleanup on unmount
+    return () => {
+      mounted = false;
+      
+      // Clean up services
+      if (metronomeRef.current) {
+        metronomeRef.current.dispose();
+      }
+      
+      if (detectorRef.current && detectorRef.current.isRunning) {
+        detectorRef.current.stop();
+      }
+      
+      if (aecStreamRef.current) {
+        disableAEC(aecStreamRef.current);
+      }
+    };
+  }, []); // Only run once on mount
+
+  // Update BPM when it changes
+  useEffect(() => {
+    if (metronomeRef.current) {
+      metronomeRef.current.setBpm(bpm);
+    }
+  }, [bpm]);
+
+  /**
+   * Request microphone permission
+   * @returns {Promise<boolean>} True if granted
+   */
+  const requestMicrophonePermission = async () => {
     try {
-      const s = await mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
-        video: false,
+      const permission = Platform.select({
+        ios: PERMISSIONS.IOS.MICROPHONE,
+        android: PERMISSIONS.ANDROID.RECORD_AUDIO,
       });
-      aecStreamRef.current = s;
-      setAec(true);
-      return true;
-    } catch (e) {
-      console.warn('AEC enable failed', e);
-      setAec(false);
+
+      if (!permission) {
+        console.warn('Permission not defined for platform');
+        return false;
+      }
+
+      const result = await request(permission);
+      return result === RESULTS.GRANTED;
+    } catch (error) {
+      console.error('Failed to request microphone permission:', error);
       return false;
     }
-  }, []);
+  };
 
+  /**
+   * Start detection and metronome
+   */
   const start = useCallback(async () => {
-    if (isRunning) return;
-    // Engage AEC if possible (native only)
-    if (Platform.OS === 'ios' || Platform.OS === 'android') {
-      await enableAEC();
+    if (isRunning || !isInitialized || !permissionGranted) {
+      console.warn('Cannot start:', { isRunning, isInitialized, permissionGranted });
+      return;
     }
 
-    // Start mic frames
     try {
-      VoiceProcessor.addFrameListener((frame) => {
-        const now = performance.now();
-        // HPF + envelope + ZCR
-        let sum = 0, last = 0, zc = 0;
-        const hp = hpRef.current;
-        for (let i = 0; i < frame.length; i++) {
-          const y = hp.process(frame[i] / 32768);
-          sum += Math.abs(y);
-          if ((y > 0 && last <= 0) || (y < 0 && last >= 0)) zc++;
-          last = y;
+      console.log('Starting PuttIQ detector...');
+
+      // Enable AEC if supported (native platforms only)
+      if (isAECSupported()) {
+        const aecStream = await enableAEC();
+        if (aecStream) {
+          aecStreamRef.current = aecStream;
+          setAecActive(true);
+          console.log('AEC enabled');
+        } else {
+          console.warn('AEC failed to enable, continuing without it');
+          setAecActive(false);
         }
-        const env = sum / frame.length;
-        const zcr = zc / frame.length;
-
-        // update baseline carefully
-        const base = baselineRef.current;
-        const nextBase = 0.995 * base + 0.005 * Math.min(env, base * 2);
-        baselineRef.current = nextBase;
-
-        const threshold = Math.max(0.0015, nextBase * 6);
-        const isHit = env > threshold && zcr > 0.22;
-
-        if (isHit && now - lastHitAtRef.current > 250) {
-          // tick guard (belt and braces)
-          const ticks = metRef.current?.getNextTicks(8) ?? [];
-          for (const t of ticks) {
-            if (Math.abs(now - t) <= 30) return;
-          }
-          lastHitAtRef.current = now;
-          setLastHit({ t: now, energy: env, latencyMs: (256 / 16000) * 1000 });
-        }
-      });
-      await VoiceProcessor.start(256, 16000); // returns void; DO NOT array-destructure
-    } catch (e) {
-      console.warn('VoiceProcessor start failed', e);
-    }
-
-    // Start metronome
-    try { metRef.current?.start(); } catch {} // eslint-disable-line no-empty
-
-    setRunning(true);
-  }, [enableAEC, isRunning]);
-
-  const stop = useCallback(async () => {
-    try { metRef.current?.stop(); } catch {} // eslint-disable-line no-empty
-    try {
-      VoiceProcessor.removeFrameListener(() => {});
-      await VoiceProcessor.stop();
-    } catch {} // eslint-disable-line no-empty
-
-    try {
-      if (aecStreamRef.current) {
-        aecStreamRef.current.getTracks().forEach((t) => t.stop());
-        aecStreamRef.current = null;
       }
-      setAec(false);
-    } catch {} // eslint-disable-line no-empty
 
-    setRunning(false);
+      // Start detector
+      await detectorRef.current.start();
+      console.log('Detector started');
+
+      // Start metronome
+      await metronomeRef.current.start();
+      console.log('Metronome started');
+
+      setRunning(true);
+      
+      // Start stats monitoring
+      startStatsMonitoring();
+      
+    } catch (error) {
+      console.error('Failed to start:', error);
+      
+      // Clean up on error
+      if (metronomeRef.current) {
+        metronomeRef.current.stop();
+      }
+      
+      if (detectorRef.current) {
+        await detectorRef.current.stop();
+      }
+      
+      if (aecStreamRef.current) {
+        disableAEC(aecStreamRef.current);
+        aecStreamRef.current = null;
+        setAecActive(false);
+      }
+      
+      setRunning(false);
+    }
+  }, [isInitialized, isRunning, permissionGranted]);
+
+  /**
+   * Stop detection and metronome
+   */
+  const stop = useCallback(async () => {
+    if (!isRunning) return;
+
+    try {
+      console.log('Stopping PuttIQ detector...');
+
+      // Stop metronome
+      if (metronomeRef.current) {
+        metronomeRef.current.stop();
+      }
+
+      // Stop detector
+      if (detectorRef.current) {
+        await detectorRef.current.stop();
+        
+        // Get final stats
+        const stats = detectorRef.current.getStats();
+        console.log('Final detector stats:', stats);
+        setDetectorStats(stats);
+      }
+
+      // Disable AEC
+      if (aecStreamRef.current) {
+        disableAEC(aecStreamRef.current);
+        aecStreamRef.current = null;
+        setAecActive(false);
+      }
+
+      setRunning(false);
+      setLastHit(null);
+      
+      console.log('PuttIQ detector stopped');
+    } catch (error) {
+      console.error('Error stopping detector:', error);
+      setRunning(false);
+    }
+  }, [isRunning]);
+
+  /**
+   * Update BPM value
+   */
+  const updateBpm = useCallback((newBpm) => {
+    const clampedBpm = Math.max(60, Math.min(100, Math.round(newBpm)));
+    setBpm(clampedBpm);
+    
+    if (metronomeRef.current) {
+      metronomeRef.current.setBpm(clampedBpm);
+    }
   }, []);
 
-  const updateBpm = useCallback((v) => {
-    setBpm(v);
-    metRef.current?.setBpm(v);
+  /**
+   * Update detector sensitivity
+   */
+  const updateSensitivity = useCallback((sensitivity) => {
+    if (!detectorRef.current) return;
+
+    // Map sensitivity (0-1) to energy threshold (10-3)
+    const energyThresh = 10 - (sensitivity * 7);
+    
+    detectorRef.current.updateParams({
+      energyThresh,
+      zcrThresh: 0.15 + (sensitivity * 0.15) // 0.15-0.30 range
+    });
+
+    console.log('Updated sensitivity:', { sensitivity, energyThresh });
   }, []);
+
+  /**
+   * Start monitoring detector statistics
+   */
+  const startStatsMonitoring = useCallback(() => {
+    if (!detectorRef.current) return;
+
+    const updateStats = () => {
+      if (detectorRef.current && isRunning) {
+        const stats = detectorRef.current.getStats();
+        setDetectorStats(stats);
+        
+        // Continue monitoring
+        setTimeout(updateStats, 1000);
+      }
+    };
+
+    updateStats();
+  }, [isRunning]);
+
+  /**
+   * Reset detector calibration
+   */
+  const resetCalibration = useCallback(() => {
+    if (detectorRef.current) {
+      detectorRef.current.reset();
+      console.log('Detector calibration reset');
+    }
+  }, []);
+
+  /**
+   * Get timing accuracy relative to metronome
+   */
+  const getTimingAccuracy = useCallback(() => {
+    if (!lastHit || !metronomeRef.current) return null;
+
+    const period = metronomeRef.current.getPeriod();
+    const ticks = metronomeRef.current.getNextTicks(2);
+    
+    // Find nearest tick
+    let nearestTick = ticks[0];
+    let minDiff = Math.abs(lastHit.timestamp - ticks[0]);
+    
+    for (const tick of ticks) {
+      const diff = Math.abs(lastHit.timestamp - tick);
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearestTick = tick;
+      }
+    }
+
+    // Calculate timing
+    const timingDiff = lastHit.timestamp - nearestTick;
+    const accuracy = 1 - (Math.abs(timingDiff) / (period / 2));
+    
+    return {
+      timingDiff,
+      accuracy: Math.max(0, Math.min(1, accuracy)),
+      isEarly: timingDiff < 0,
+      isLate: timingDiff > 0
+    };
+  }, [lastHit]);
 
   return {
+    // State
     isInitialized,
     isRunning,
     permissionGranted,
     aecActive,
     bpm,
     lastHit,
-    updateBpm,
+    detectorStats,
+    
+    // Methods
     start,
     stop,
+    updateBpm,
+    updateSensitivity,
+    resetCalibration,
+    getTimingAccuracy
   };
 }
+
+export default usePuttIQDetector;
