@@ -117,7 +117,7 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Wood Block',
       kind: 'ignore',
       template: spectralAnalysis.normalize(woodTemplate),
-      threshold: 0.88,
+      threshold: 0.75,  // LOWER threshold = stricter matching for filtering
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,
@@ -144,14 +144,14 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Electronic Beep',
       kind: 'ignore',
       template: spectralAnalysis.normalize(beepTemplate),
-      threshold: 0.90,
+      threshold: 0.70,  // MUCH stricter for filtering
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,
       enabled: true
     });
     
-    // Click/tick metronome (like our default sound)
+    // Click/tick metronome (like our default sound) - MOST IMPORTANT
     const clickTemplate = this.createMetronomeTemplate();
     // Emphasize high frequencies for sharp click
     for (let i = 40; i < 80; i++) {
@@ -161,7 +161,7 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Click/Tick',
       kind: 'ignore',
       template: spectralAnalysis.normalize(clickTemplate),
-      threshold: 0.88,
+      threshold: 0.65,  // VERY strict - this is our main metronome sound
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,
@@ -181,7 +181,7 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Rimshot',
       kind: 'ignore',
       template: spectralAnalysis.normalize(rimshotTemplate),
-      threshold: 0.87,
+      threshold: 0.72,  // Stricter filtering
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,

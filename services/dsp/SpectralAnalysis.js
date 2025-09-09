@@ -271,8 +271,8 @@ export class SpectralAnalysis {
     energy /= floatSamples.length;
     const zcr = zeroCrossings / floatSamples.length;
     
-    // Transient detection criteria
-    const isTransient = energy > 0.001 && zcr > 0.2;
+    // MUCH MORE SENSITIVE - Transient detection criteria
+    const isTransient = energy > 0.0002 && zcr > 0.1;  // Was 0.001 and 0.2
     
     return {
       energy,

@@ -34,7 +34,18 @@ export function usePuttIQDetector(defaultBpm = 80) {
       try {
         console.log('Initializing PuttIQ detector...');
 
-        // Initialize metronome first (before permission request)
+        // Initialize profiles FIRST to ensure metronome filtering works
+        try {
+          const { profileManager } = require('../services/profiles/ProfileManager');
+          const { getDeviceId } = require('../services/auth');
+          const deviceId = await getDeviceId();
+          await profileManager.initialize(deviceId);
+          console.log('Profile manager initialized with metronome templates');
+        } catch (profileError) {
+          console.error('Failed to initialize profiles:', profileError);
+        }
+
+        // Initialize metronome (before permission request)
         try {
           metronomeRef.current = new Metronome();
           await metronomeRef.current.load();
@@ -61,10 +72,10 @@ export function usePuttIQDetector(defaultBpm = 80) {
           const detectorOptions = {
             sampleRate: 16000,
             frameLength: 256,
-            refractoryMs: 250,
-            energyThresh: 6,
-            zcrThresh: 0.22,
-            tickGuardMs: 30,
+            refractoryMs: 200,     // Faster response (was 250)
+            energyThresh: 4,       // MORE SENSITIVE (was 6)
+            zcrThresh: 0.18,       // Lower threshold (was 0.22)
+            tickGuardMs: 50,       // Wider guard for metronome (was 30)
             getUpcomingTicks: () => {
               return metronomeRef.current ? metronomeRef.current.getNextTicks(8) : [];
             },
@@ -285,12 +296,12 @@ export function usePuttIQDetector(defaultBpm = 80) {
   const updateSensitivity = useCallback((sensitivity) => {
     if (!detectorRef.current) return;
 
-    // Map sensitivity (0-1) to energy threshold (10-3)
-    const energyThresh = 10 - (sensitivity * 7);
+    // Map sensitivity (0-1) to energy threshold (8-2) - MORE SENSITIVE RANGE
+    const energyThresh = 8 - (sensitivity * 6);
     
     detectorRef.current.updateParams({
       energyThresh,
-      zcrThresh: 0.15 + (sensitivity * 0.15) // 0.15-0.30 range
+      zcrThresh: 0.12 + (sensitivity * 0.13) // 0.12-0.25 range (lower floor)
     });
 
     console.log('Updated sensitivity:', { sensitivity, energyThresh });

@@ -56,6 +56,10 @@ export default function PutterOnboardingScreen({ onComplete, onCancel }) {
         const detector = await DetectorFactory.createDetector({
           sampleRate: 16000,
           frameLength: 256,
+          // MUCH MORE SENSITIVE FOR RECORDING
+          energyThresh: 2,      // Very sensitive (was 6)
+          zcrThresh: 0.15,      // Lower threshold (was 0.22)
+          refractoryMs: 150,    // Faster response (was 250)
           onStrike: (strike) => {
             console.log('Impact detected during recording:', strike);
             setDetectionCount(prev => prev + 1);
