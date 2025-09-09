@@ -3,7 +3,8 @@ import { Platform } from 'react-native';
 import { request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { Metronome } from '../services/audio/Metronome';
 import { enableAEC, disableAEC, isAECSupported } from '../services/audio/enableAEC';
-import { PutterDetector } from '../services/dsp/PutterDetector';
+// Use the Expo-compatible detector instead of the Picovoice one
+import { PutterDetectorExpo as PutterDetector } from '../services/dsp/PutterDetectorExpo';
 
 /**
  * Enhanced PuttIQ detector hook using improved DSP services
