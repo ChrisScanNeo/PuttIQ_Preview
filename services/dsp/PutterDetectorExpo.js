@@ -45,8 +45,12 @@ try {
  * @property {number} zcrThresh - Zero-crossing rate threshold (default 0.22)
  * @property {number} tickGuardMs - Ignore detections near metronome ticks (default 30)
  * @property {Function} getUpcomingTicks - Function returning array of tick timestamps
+ * @property {Function} getBpm - Function returning current BPM
  * @property {Function} onStrike - Callback for strike events
  * @property {boolean} useProfiles - Enable profile-based detection (default true)
+ * @property {boolean} useListeningZone - Enable listening zone feature (default false)
+ * @property {number} listeningZonePercent - Percentage of beat to listen (default 0.4)
+ * @property {number} listeningZoneOffset - Start offset into beat (default 0.3)
  */
 
 /**
@@ -64,14 +68,21 @@ export class PutterDetectorExpo {
       zcrThresh: 0.22,
       tickGuardMs: 30,
       getUpcomingTicks: () => [],
+      getBpm: () => 80,  // Default BPM function
       onStrike: () => {},
       useProfiles: true, // Enable profile-based detection by default
+      useListeningZone: false, // Disabled by default for backwards compatibility
+      listeningZonePercent: 0.4, // 40% of beat period
+      listeningZoneOffset: 0.3,  // Start at 30% into beat
       ...options
     };
 
     // DSP components
     this.bandpassFilter = null;
     this.initializeFilters();
+    
+    // Listening zone tracking
+    this.wasInZone = false;  // Track zone transitions
     
     // Profile-based detection
     this.useProfiles = this.opts.useProfiles !== false; // Use profiles unless explicitly disabled
@@ -161,6 +172,22 @@ export class PutterDetectorExpo {
     } catch (error) {
       console.log('❌ Profile check failed, using basic detection:', error.message);
       this.profileCheckEnabled = false;
+    }
+    
+    // Log listening zone configuration
+    if (this.opts.useListeningZone) {
+      const bpm = this.opts.getBpm();
+      const period = 60000 / bpm;
+      const zoneStartMs = period * this.opts.listeningZoneOffset;
+      const zoneEndMs = period * (this.opts.listeningZoneOffset + this.opts.listeningZonePercent);
+      
+      console.log('🎵 LISTENING ZONE ENABLED:');
+      console.log(`   BPM: ${bpm}, Period: ${period.toFixed(0)}ms`);
+      console.log(`   Zone: ${(this.opts.listeningZoneOffset * 100).toFixed(0)}%-${((this.opts.listeningZoneOffset + this.opts.listeningZonePercent) * 100).toFixed(0)}% of beat`);
+      console.log(`   Window: ${zoneStartMs.toFixed(0)}ms-${zoneEndMs.toFixed(0)}ms after each tick`);
+      console.log(`   Will ONLY detect putts during this ${(this.opts.listeningZonePercent * 100).toFixed(0)}% window`);
+    } else {
+      console.log('🎵 Listening zone DISABLED - detecting throughout entire beat');
     }
 
     try {
@@ -296,6 +323,32 @@ export class PutterDetectorExpo {
     // Update baseline (adaptive noise floor)
     this.updateBaseline(features.energy);
 
+    // Check if we're in the listening zone (early exit if not)
+    const zoneCheck = this.isInListeningZone(now);
+    
+    // Track zone transitions for better debugging
+    if (this.opts.useListeningZone) {
+      // Detect zone entry
+      if (zoneCheck.inZone && !this.wasInZone) {
+        console.log(`✅ ENTERED listening zone at ${(zoneCheck.positionInBeat * 100).toFixed(0)}% of beat`);
+        console.log(`   Zone is ${(zoneCheck.zoneStart * 100).toFixed(0)}%-${(zoneCheck.zoneEnd * 100).toFixed(0)}% of beat period`);
+      }
+      // Detect zone exit
+      else if (!zoneCheck.inZone && this.wasInZone) {
+        console.log(`❌ EXITED listening zone at ${(zoneCheck.positionInBeat * 100).toFixed(0)}% of beat`);
+      }
+      this.wasInZone = zoneCheck.inZone;
+      
+      // Exit early if outside zone
+      if (!zoneCheck.inZone) {
+        // Log position periodically while outside zone
+        if (this.frameCount % 100 === 0) {
+          console.log(`⏳ Waiting for zone: currently at ${(zoneCheck.positionInBeat * 100).toFixed(0)}% of beat`);
+        }
+        return; // Skip detection outside the listening zone
+      }
+    }
+
     // Calculate dynamic threshold with fixed minimum for calibration
     let threshold;
     if (this.opts.calibrationMode && this.opts.fixedThreshold) {
@@ -310,9 +363,12 @@ export class PutterDetectorExpo {
     let isHit = false;
     let profileMatch = null;
     
-    // Log energy levels periodically for debugging
+    // Log energy levels and zone status periodically for debugging
     if (this.frameCount % 100 === 0) {
       console.log(`📊 Energy: ${features.energy.toFixed(6)}, Baseline: ${this.baseline.toFixed(6)}, Threshold: ${threshold.toFixed(6)}`);
+      if (this.opts.useListeningZone) {
+        console.log(`🎯 Listening zone: ${zoneCheck.reason} (${(zoneCheck.zoneStart * 100).toFixed(0)}%-${(zoneCheck.zoneEnd * 100).toFixed(0)}% of beat)`);
+      }
     }
     
     if (this.profileCheckEnabled && this.useProfiles && features.energy > threshold * 0.5) {
@@ -552,6 +608,70 @@ export class PutterDetectorExpo {
     }
 
     return false;
+  }
+
+  /**
+   * Check if timestamp is within the listening zone
+   * Only detect hits during the middle portion of each beat period
+   * @param {number} timestamp - Timestamp to check
+   * @returns {Object} Zone check result with details
+   */
+  isInListeningZone(timestamp) {
+    // If listening zone is disabled, always return true
+    if (!this.opts.useListeningZone) {
+      return { inZone: true, reason: 'Zone disabled' };
+    }
+
+    const bpm = this.opts.getBpm();
+    const period = 60000 / bpm; // Period in milliseconds
+    const ticks = this.opts.getUpcomingTicks();
+    
+    if (!ticks || ticks.length === 0) {
+      return { inZone: true, reason: 'No ticks available' };
+    }
+
+    // Find the most recent tick (including past ticks)
+    let lastTick = null;
+    let nextTick = null;
+    
+    for (let i = 0; i < ticks.length; i++) {
+      if (ticks[i] <= timestamp) {
+        lastTick = ticks[i];
+      } else {
+        nextTick = ticks[i];
+        break;
+      }
+    }
+    
+    // If no past tick found, estimate from next tick
+    if (lastTick === null && nextTick !== null) {
+      lastTick = nextTick - period;
+    }
+    
+    // If still no reference, can't determine zone
+    if (lastTick === null) {
+      return { inZone: true, reason: 'Cannot determine position' };
+    }
+
+    // Calculate position within beat (0.0 to 1.0)
+    const positionInBeat = ((timestamp - lastTick) % period) / period;
+    
+    // Define listening zone boundaries
+    const zoneStart = this.opts.listeningZoneOffset;
+    const zoneEnd = zoneStart + this.opts.listeningZonePercent;
+    
+    // Check if we're in the listening zone
+    const inZone = positionInBeat >= zoneStart && positionInBeat <= zoneEnd;
+    
+    return {
+      inZone,
+      positionInBeat,
+      zoneStart,
+      zoneEnd,
+      reason: inZone ? 
+        `In zone (${(positionInBeat * 100).toFixed(0)}% of beat)` : 
+        `Outside zone (${(positionInBeat * 100).toFixed(0)}% of beat)`
+    };
   }
 
   /**

@@ -86,8 +86,17 @@ export function usePuttIQDetector(defaultBpm = 80) {
             zcrThresh: 0.15,       // Lower threshold for better detection
             tickGuardMs: 80,       // Wider guard window for metronome filtering
             useProfiles: true,     // Explicitly enable profile-based detection
+            
+            // Listening zone configuration - only detect in middle portion of beat
+            useListeningZone: true,      // Enable listening zone feature
+            listeningZonePercent: 0.40,  // Listen for 40% of beat period
+            listeningZoneOffset: 0.30,   // Start at 30% into beat (30%-70%)
+            
             getUpcomingTicks: () => {
               return metronomeRef.current ? metronomeRef.current.getNextTicks(8) : [];
+            },
+            getBpm: () => {
+              return metronomeRef.current ? metronomeRef.current.getBpm() : 80;
             },
             onStrike: (strikeEvent) => {
               console.log('⚡ Strike detected in hook:', {
