@@ -288,7 +288,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         impacts: recordingsRef.current.map(r => ({
           timestamp: r.timestamp,
           energy: r.features.maxEnergy,
-          spectralFeatures: r.features.impactWindow,
+          spectralFeatures: r.features.spectralFeatures || r.features.impactWindow,
           audioData: r.audioData
         })),
         name: 'My Putter (Countdown)',

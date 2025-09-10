@@ -164,6 +164,8 @@ class RecordingManager {
    * @returns {Object} Audio features
    */
   extractFeatures(samples) {
+    const { spectralAnalysis } = require('../dsp/SpectralAnalysis');
+    
     let maxEnergy = 0;
     let avgEnergy = 0;
     let peakIndex = 0;
@@ -180,12 +182,32 @@ class RecordingManager {
     
     avgEnergy /= samples.length;
     
-    // Extract window around peak
+    // Extract fixed-size window around peak
     const windowSize = 512;
-    const halfWindow = windowSize / 2;
-    const start = Math.max(0, peakIndex - halfWindow);
-    const end = Math.min(samples.length, peakIndex + halfWindow);
-    const impactWindow = samples.slice(start, end);
+    const halfWindow = Math.floor(windowSize / 2);
+    
+    // Create fixed-size window, padding with zeros if needed
+    const impactWindow = new Float32Array(windowSize);
+    
+    for (let i = 0; i < windowSize; i++) {
+      const sampleIndex = peakIndex - halfWindow + i;
+      if (sampleIndex >= 0 && sampleIndex < samples.length) {
+        impactWindow[i] = samples[sampleIndex];
+      } else {
+        impactWindow[i] = 0; // Pad with zeros
+      }
+    }
+    
+    // Compute actual spectral features (FFT) from impact window
+    let spectralFeatures = null;
+    try {
+      spectralFeatures = spectralAnalysis.computeSpectrum(impactWindow);
+      console.log('Computed spectral features, length:', spectralFeatures?.length);
+    } catch (error) {
+      console.error('Failed to compute spectrum:', error);
+      // Use raw window as fallback
+      spectralFeatures = impactWindow;
+    }
     
     return {
       maxEnergy,
@@ -193,6 +215,7 @@ class RecordingManager {
       peakIndex,
       peakTime: peakIndex / 16000, // Convert to seconds
       impactWindow,
+      spectralFeatures, // Add computed spectrum
       samples
     };
   }
