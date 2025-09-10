@@ -243,6 +243,21 @@ export default function ProfileManagerScreen({ route, navigation }) {
           </TouchableOpacity>
           
           <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: '#2196F3' }]}
+            onPress={() => {
+              // Navigate to test screen or show test modal
+              Alert.alert(
+                'Test Profiles',
+                'Your putter profile is ready!\n\n• Target: My Putter (Countdown)\n• Ignores: 4 metronome profiles\n\nProfiles will be used to detect putts and filter noise.',
+                [{ text: 'OK' }]
+              );
+            }}
+          >
+            <Text style={styles.actionButtonText}>🧪 Test Detection</Text>
+            <Text style={styles.actionButtonSubtext}>Test Profile Matching</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
             style={[styles.actionButton, styles.dangerButton]}
             onPress={() => {
               Alert.alert(
@@ -444,17 +459,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   actionButtons: {
-    flexDirection: 'row',
     paddingHorizontal: 15,
     marginBottom: 15,
     gap: 10,
   },
   actionButton: {
-    flex: 1,
     backgroundColor: '#2E7D32',
     paddingVertical: 12,
     borderRadius: 25,
     alignItems: 'center',
+    marginBottom: 8,
   },
   secondaryButton: {
     backgroundColor: '#FF9800',
