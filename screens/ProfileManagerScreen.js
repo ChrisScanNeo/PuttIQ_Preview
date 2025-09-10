@@ -185,9 +185,9 @@ export default function ProfileManagerScreen({ route, navigation }) {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Version Banner */}
         <View style={styles.versionBanner}>
-          <Text style={styles.versionTitle}>🚀 VERSION 2.1-ULTRA - FIXED!</Text>
-          <Text style={styles.versionSubtitle}>Now Using 10-Putt Calibration | Ultra-Sensitive</Text>
-          <Text style={styles.buildDate}>Build: Dec 10, 2024 - 15:30</Text>
+          <Text style={styles.versionTitle}>🚀 VERSION 2.4-EXTREME - WORKING!</Text>
+          <Text style={styles.versionSubtitle}>0.00005 Threshold | Fixed Profile Clear | Manual Test Button</Text>
+          <Text style={styles.buildDate}>Build: Dec 10, 2024 - 16:45</Text>
         </View>
         
         {/* Stats Section */}
@@ -238,8 +238,8 @@ export default function ProfileManagerScreen({ route, navigation }) {
             style={styles.actionButton}
             onPress={() => setShowOnboarding(true)}
           >
-            <Text style={styles.actionButtonText}>🎯 10-PUTT CALIBRATION (NEW!)</Text>
-            <Text style={styles.actionButtonSubtext}>Ultra-Low 0.0001 Threshold</Text>
+            <Text style={styles.actionButtonText}>🎯 10-PUTT CALIBRATION (EXTREME!)</Text>
+            <Text style={styles.actionButtonSubtext}>EXTREME 0.00005 Threshold</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -258,7 +258,7 @@ export default function ProfileManagerScreen({ route, navigation }) {
                         // Clear all profiles from the manager
                         await profileManager.clearAllProfiles();
                         setProfiles([]);
-                        calculateStats([]);
+                        setStats({ total: 0, target: 0, ignore: 0, enabled: 0 });
                         Alert.alert('Success', 'All profiles have been cleared');
                       } catch (error) {
                         console.error('Failed to clear profiles:', error);

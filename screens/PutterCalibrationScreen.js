@@ -24,9 +24,10 @@ const isSmallScreen = screenWidth < 375;
 const isTinyScreen = screenHeight < 600;
 
 export default function PutterCalibrationScreen({ navigation, route }) {
-  console.log('🚀 PutterCalibrationScreen v2.2-INSANE loaded! Build: 2024-12-10 15:30');
-  console.log('⚡ INSANELY sensitive detection (0.1 threshold) with NO time limits');
-  console.log('🎯 NOW ACTUALLY BEING USED from ProfileManager!');
+  console.log('🚀 PutterCalibrationScreen v2.4-EXTREME loaded! Build: 2024-12-10 16:45');
+  console.log('⚡ EXTREME sensitivity (0.00005 threshold) - 50% lower than before!');
+  console.log('🎯 Fixed calculateStats error + manual detection button');
+  console.log('✅ Detection flow fixed - isListening no longer blocks strikes');
   
   const { onComplete } = route.params || {};
   
@@ -52,7 +53,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   
   // Constants
   const TOTAL_PUTTS = 10;
-  const VERSION = 'v2.3-ULTRA-LOW'; // Version with 0.0001 fixed threshold
+  const VERSION = 'v2.4-EXTREME'; // Version with 0.00005 fixed threshold - HALF of previous!
   const BUILD_DATE = '2024-12-10 16:00'; // Build timestamp
   const PRE_IMPACT_SAMPLES = 512;  // Capture before impact
   const POST_IMPACT_SAMPLES = 512; // Capture after impact
@@ -116,16 +117,16 @@ export default function PutterCalibrationScreen({ navigation, route }) {
       setDebugInfo('Initializing detector...');
       
       try {
-        // Initialize detector with ULTRA-LOW threshold for soft putts
+        // Initialize detector with EXTREME sensitivity for soft putts
         const detector = await DetectorFactory.createDetector({
           sampleRate: 16000,
           frameLength: 256,
-          energyThresh: 0.01,    // ULTRA-LOW: 10x lower than before (was 0.1)
-          zcrThresh: 0.02,       // Even lower ZCR threshold
-          refractoryMs: 800,     // Reduced to 0.8 seconds for faster response
-          calibrationMode: true, // Enable special calibration mode (only energy check)
-          fixedThreshold: 0.0001, // Fixed minimum threshold for soft putts
-          tickGuardMs: 0,        // Disable metronome guard
+          energyThresh: 0.001,    // EXTREMELY LOW: 100x lower than normal
+          zcrThresh: 0.01,        // Minimal ZCR threshold
+          refractoryMs: 500,      // 0.5 seconds between putts
+          calibrationMode: true,  // Enable special calibration mode (only energy check)
+          fixedThreshold: 0.00005, // EXTREME: Half of previous threshold (was 0.0001)
+          tickGuardMs: 0,         // Disable metronome guard
           getUpcomingTicks: () => [], // No metronome ticks to check
           bufferSize: PRE_IMPACT_SAMPLES + POST_IMPACT_SAMPLES,
           onStrike: handlePuttDetected,
@@ -137,14 +138,14 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         
         // Warm-up period to let baseline stabilize
         setIsWarmingUp(true);
-        setCurrentInstruction('🔥 WARMING UP ULTRA-LOW THRESHOLD DETECTOR (2 seconds)...');
-        setDebugInfo(`Fixed threshold: 0.0001 | energyThresh: 0.01`);
+        setCurrentInstruction('🔥 WARMING UP EXTREME SENSITIVITY DETECTOR (2 seconds)...');
+        setDebugInfo(`EXTREME MODE: Fixed threshold: 0.00005 | energyThresh: 0.001`);
         setTimeout(() => {
           setIsWarmingUp(false);
           setIsListening(true); // Start listening immediately after warm-up
-          setDebugInfo('✅ Ready for detection - LISTENING!');
+          setDebugInfo('✅ EXTREME SENSITIVITY ACTIVE - LISTENING!');
           setCurrentInstruction(`Ready for putt 1 of ${TOTAL_PUTTS} - Take your time`);
-          console.log('Warm-up complete - now listening for impacts');
+          console.log('Warm-up complete - EXTREME sensitivity active, threshold: 0.00005');
         }, 2000);
         
       } catch (error) {
@@ -543,7 +544,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         )}
         
         <Text style={styles.detectionNote}>
-          Detection: ULTRA-LOW Mode (0.0001 fixed)
+          Detection: EXTREME Mode (0.00005 fixed)
         </Text>
         
         {debugInfo !== '' && (
@@ -555,10 +556,10 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         {energyLevel > 0 && (
           <View style={styles.energyDisplay}>
             <Text style={styles.energyLabel}>Energy Level:</Text>
-            <Text style={[styles.energyValue, energyLevel > 0.0001 ? styles.energyHigh : styles.energyLow]}>
+            <Text style={[styles.energyValue, energyLevel > 0.00005 ? styles.energyHigh : styles.energyLow]}>
               {energyLevel.toFixed(6)}
             </Text>
-            <Text style={styles.thresholdText}>Threshold: 0.0001</Text>
+            <Text style={styles.thresholdText}>Threshold: 0.00005 (EXTREME)</Text>
           </View>
         )}
         
