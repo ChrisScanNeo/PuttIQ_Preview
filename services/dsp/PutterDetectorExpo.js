@@ -134,20 +134,32 @@ export class PutterDetectorExpo {
     
     // Check if profiles are available
     try {
-      if (profileManager.initialized) {
+      console.log('🔍 Checking Profile System...');
+      console.log('  - profileManager.initialized:', profileManager.initialized);
+      console.log('  - this.useProfiles flag:', this.useProfiles);
+      
+      if (profileManager.initialized && this.useProfiles) {
         const profiles = profileManager.getEnabledProfiles();
         this.profileCheckEnabled = profiles.target.length > 0 || profiles.ignore.length > 0;
-        console.log('Profile-based detection:', this.profileCheckEnabled ? 'ENABLED' : 'DISABLED');
-        console.log('Active profiles:', {
-          targets: profiles.target.map(p => p.name),
-          ignores: profiles.ignore.map(p => p.name)
+        
+        console.log('✅ PROFILE DETECTION STATUS:', this.profileCheckEnabled ? 'ENABLED' : 'DISABLED (no profiles)');
+        console.log('📋 Active profiles:', {
+          targets: profiles.target.map(p => `${p.name} (threshold: ${p.threshold})`),
+          ignores: profiles.ignore.map(p => `${p.name} (threshold: ${p.threshold})`)
         });
+        
+        if (profiles.ignore.length > 0) {
+          console.log('🔇 Will FILTER OUT:', profiles.ignore.map(p => p.name).join(', '));
+        }
+        if (profiles.target.length > 0) {
+          console.log('🎯 Will DETECT:', profiles.target.map(p => p.name).join(', '));
+        }
       } else {
-        console.log('ProfileManager not initialized, using basic detection');
+        console.log('⚠️ ProfileManager not initialized or profiles disabled, using BASIC detection only');
         this.profileCheckEnabled = false;
       }
     } catch (error) {
-      console.log('Profile check failed, using basic detection:', error.message);
+      console.log('❌ Profile check failed, using basic detection:', error.message);
       this.profileCheckEnabled = false;
     }
 
@@ -298,6 +310,11 @@ export class PutterDetectorExpo {
     let isHit = false;
     let profileMatch = null;
     
+    // Log energy levels periodically for debugging
+    if (this.frameCount % 100 === 0) {
+      console.log(`📊 Energy: ${features.energy.toFixed(6)}, Baseline: ${this.baseline.toFixed(6)}, Threshold: ${threshold.toFixed(6)}`);
+    }
+    
     if (this.profileCheckEnabled && this.useProfiles && features.energy > threshold * 0.5) {
       // Compute spectrum from recent frames
       try {
@@ -308,17 +325,26 @@ export class PutterDetectorExpo {
           
           if (profileMatch.type === 'ignore') {
             // Sound matches ignore profile (e.g., metronome) - filter it out
-            console.log(`Filtered: ${profileMatch.profile} (${(profileMatch.similarity * 100).toFixed(1)}%)`);
+            console.log(`🔇 FILTERED OUT: ${profileMatch.profile} (similarity: ${(profileMatch.similarity * 100).toFixed(1)}%)`);
+            console.log(`   Energy was: ${features.energy.toFixed(6)}, would have triggered: ${features.energy > threshold}`);
             return; // Skip this frame completely
           } else if (profileMatch.type === 'target') {
             // Sound matches target profile (putter) - detect it!
             isHit = true;
-            console.log(`Detected: ${profileMatch.profile} (${(profileMatch.similarity * 100).toFixed(1)}%)`);
+            console.log(`✅ PROFILE MATCH: ${profileMatch.profile} (similarity: ${(profileMatch.similarity * 100).toFixed(1)}%)`);
+          } else if (profileMatch.type === 'no_match') {
+            // Sound didn't match any profile
+            console.log(`❓ No profile match (energy: ${features.energy.toFixed(6)})`);
           }
           // For 'no_match' or 'pass', fall through to basic detection
         }
       } catch (error) {
-        console.error('Profile check failed:', error);
+        console.error('❌ Profile check failed:', error);
+      }
+    } else if (features.energy > threshold * 0.5 && features.energy <= threshold) {
+      // Sound is in the "maybe" range - log for debugging
+      if (this.frameCount % 20 === 0) {
+        console.log(`📉 Sub-threshold sound: energy=${features.energy.toFixed(6)} (need >${threshold.toFixed(6)})`);
       }
     }
     
@@ -361,6 +387,15 @@ export class PutterDetectorExpo {
           similarity: profileMatch.similarity
         } : null
       };
+
+      // Log the detection
+      console.log('🎯 PUTT DETECTED!', {
+        energy: features.energy.toFixed(6),
+        quality: quality,
+        confidence: (confidence * 100).toFixed(1) + '%',
+        profileMatch: profileMatch ? `${profileMatch.profile} (${(profileMatch.similarity * 100).toFixed(1)}%)` : 'Basic detection',
+        totalDetections: this.detectionCount
+      });
 
       // Notify callback
       this.opts.onStrike(strikeEvent);

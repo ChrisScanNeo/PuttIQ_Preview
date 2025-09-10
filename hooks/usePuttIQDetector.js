@@ -36,13 +36,22 @@ export function usePuttIQDetector(defaultBpm = 80) {
 
         // Initialize profiles FIRST to ensure metronome filtering works
         try {
+          console.log('🚀 Initializing Profile System...');
           const { profileManager } = require('../services/profiles/ProfileManager');
           const { getDeviceId } = require('../services/auth');
           const deviceId = await getDeviceId();
+          console.log('  Device ID:', deviceId);
+          
           await profileManager.initialize(deviceId);
-          console.log('Profile manager initialized with metronome templates');
+          
+          const profiles = profileManager.getEnabledProfiles();
+          console.log('✅ Profile manager initialized successfully!');
+          console.log('  - Target profiles:', profiles.target.length, profiles.target.map(p => p.name));
+          console.log('  - Ignore profiles:', profiles.ignore.length, profiles.ignore.map(p => p.name));
+          console.log('  - Metronome filtering:', profiles.ignore.some(p => p.name.includes('Metronome')) ? 'ACTIVE' : 'NOT ACTIVE');
         } catch (profileError) {
-          console.error('Failed to initialize profiles:', profileError);
+          console.error('❌ Failed to initialize profiles:', profileError);
+          console.error('  Error details:', profileError.message);
         }
 
         // Initialize metronome (before permission request)
@@ -72,15 +81,20 @@ export function usePuttIQDetector(defaultBpm = 80) {
           const detectorOptions = {
             sampleRate: 16000,
             frameLength: 256,
-            refractoryMs: 200,     // Faster response (was 250)
-            energyThresh: 4,       // MORE SENSITIVE (was 6)
-            zcrThresh: 0.18,       // Lower threshold (was 0.22)
-            tickGuardMs: 50,       // Wider guard for metronome (was 30)
+            refractoryMs: 150,     // Even faster response for quick putts
+            energyThresh: 3,       // VERY SENSITIVE for testing
+            zcrThresh: 0.15,       // Lower threshold for better detection
+            tickGuardMs: 80,       // Wider guard window for metronome filtering
+            useProfiles: true,     // Explicitly enable profile-based detection
             getUpcomingTicks: () => {
               return metronomeRef.current ? metronomeRef.current.getNextTicks(8) : [];
             },
             onStrike: (strikeEvent) => {
-              console.log('Strike detected:', strikeEvent);
+              console.log('⚡ Strike detected in hook:', {
+                energy: strikeEvent.energy.toFixed(6),
+                quality: strikeEvent.quality,
+                profileMatch: strikeEvent.profileMatch
+              });
               if (mounted) {
                 setLastHit(strikeEvent);
                 // Auto-clear hit display after 2 seconds

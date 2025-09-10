@@ -117,7 +117,7 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Wood Block',
       kind: 'ignore',
       template: spectralAnalysis.normalize(woodTemplate),
-      threshold: 0.75,  // LOWER threshold = stricter matching for filtering
+      threshold: 0.50,  // More lenient for better filtering (was 0.75)
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,
@@ -144,7 +144,7 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Electronic Beep',
       kind: 'ignore',
       template: spectralAnalysis.normalize(beepTemplate),
-      threshold: 0.70,  // MUCH stricter for filtering
+      threshold: 0.45,  // More lenient for better filtering (was 0.70)
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,
@@ -161,7 +161,7 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Click/Tick',
       kind: 'ignore',
       template: spectralAnalysis.normalize(clickTemplate),
-      threshold: 0.65,  // VERY strict - this is our main metronome sound
+      threshold: 0.40,  // Most lenient - this is our main metronome sound (was 0.65)
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,
