@@ -8,7 +8,8 @@ import {
   SafeAreaView,
   Animated,
   Dimensions,
-  ActivityIndicator
+  ActivityIndicator,
+  Vibration
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { DetectorFactory } from '../services/dsp/DetectorFactory';
@@ -36,14 +37,18 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   const animatedOpacity = useRef(new Animated.Value(1)).current;
   const impactBufferRef = useRef([]);
   const listeningTimeoutRef = useRef(null);
+  const confirmationSoundRef = useRef(null);
   
   // Constants
   const TOTAL_PUTTS = 10;
-  const LISTENING_WINDOW = 5000; // 5 seconds to detect each putt
+  const LISTENING_WINDOW = 30000; // 30 seconds max per putt (safety timeout)
   const PRE_IMPACT_SAMPLES = 512;  // Capture before impact
   const POST_IMPACT_SAMPLES = 512; // Capture after impact
   
   useEffect(() => {
+    // Load confirmation sound
+    loadConfirmationSound();
+    
     return () => {
       // Cleanup
       if (detectorRef.current) {
@@ -52,8 +57,35 @@ export default function PutterCalibrationScreen({ navigation, route }) {
       if (listeningTimeoutRef.current) {
         clearTimeout(listeningTimeoutRef.current);
       }
+      if (confirmationSoundRef.current) {
+        confirmationSoundRef.current.unloadAsync();
+      }
     };
   }, []);
+  
+  const loadConfirmationSound = async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require('../assets/sound/metronome-85688.mp3'),
+        { volume: 0.8 }
+      );
+      confirmationSoundRef.current = sound;
+    } catch (error) {
+      console.log('Could not load confirmation sound:', error);
+    }
+  };
+  
+  const playConfirmationSound = async () => {
+    try {
+      if (confirmationSoundRef.current) {
+        await confirmationSoundRef.current.replayAsync();
+      }
+      // Also add haptic feedback
+      Vibration.vibrate(100);
+    } catch (error) {
+      console.log('Could not play confirmation sound:', error);
+    }
+  };
   
   const startCalibration = async () => {
     try {
@@ -70,13 +102,13 @@ export default function PutterCalibrationScreen({ navigation, route }) {
       impactBufferRef.current = [];
       setIsCalibrating(true);
       
-      // Initialize detector with very sensitive settings
+      // Initialize detector with EXTREMELY sensitive settings
       const detector = await DetectorFactory.createDetector({
         sampleRate: 16000,
         frameLength: 256,
-        energyThresh: 1.5,     // Ultra-sensitive for calibration
-        zcrThresh: 0.12,       // Lower threshold
-        refractoryMs: 500,     // Longer refractory to avoid double-counts
+        energyThresh: 0.5,     // EXTREMELY sensitive for calibration (was 1.5)
+        zcrThresh: 0.08,       // Much lower threshold (was 0.12)
+        refractoryMs: 800,     // Longer refractory to avoid double-counts
         bufferSize: PRE_IMPACT_SAMPLES + POST_IMPACT_SAMPLES,
         onStrike: handlePuttDetected,
         onFrame: handleAudioFrame
@@ -119,6 +151,9 @@ export default function PutterCalibrationScreen({ navigation, route }) {
     if (listeningTimeoutRef.current) {
       clearTimeout(listeningTimeoutRef.current);
     }
+    
+    // Play confirmation sound and haptic
+    await playConfirmationSound();
     
     // Visual feedback
     Animated.sequence([
@@ -200,17 +235,17 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   
   const startListeningForPutt = () => {
     setIsListening(true);
-    setCurrentInstruction(`Make putt ${puttCount + 1} of ${TOTAL_PUTTS}`);
+    setCurrentInstruction(`Ready for putt ${puttCount + 1} of ${TOTAL_PUTTS} - Take your time`);
     
-    // Set timeout for this putt
+    // Set a very long timeout just as a safety measure
     listeningTimeoutRef.current = setTimeout(() => {
       if (isListening) {
         setIsListening(false);
         Alert.alert(
-          'No Putt Detected',
-          'Please try again with a firmer strike.',
+          'Still Listening?',
+          'Having trouble detecting your putts? Try moving the device closer or hitting slightly firmer.',
           [
-            { text: 'Retry', onPress: startListeningForPutt },
+            { text: 'Continue', onPress: startListeningForPutt },
             { text: 'Cancel', onPress: cancelCalibration, style: 'cancel' }
           ]
         );
@@ -367,16 +402,19 @@ export default function PutterCalibrationScreen({ navigation, route }) {
           <Text style={styles.description}>
             This calibration will record 10 putts to create a unique sound profile for your putter.
             {'\n\n'}
+            Take your time - there's no time limit. Have 10 balls ready before starting.
+            {'\n\n'}
             This helps the app accurately detect your putts while filtering out background noise.
           </Text>
           
           <View style={styles.instructions}>
             <Text style={styles.instructionTitle}>Instructions:</Text>
             <Text style={styles.instructionText}>
-              1. Place your device 1-3 feet from the ball{'\n'}
-              2. Use your normal putting stroke{'\n'}
-              3. Make 10 putts when prompted{'\n'}
-              4. Wait for confirmation after each putt
+              1. Have 10 golf balls ready{'\n'}
+              2. Place device 1-2 feet from the ball{'\n'}
+              3. Use your normal putting stroke{'\n'}
+              4. Wait for the "ding" after each putt{'\n'}
+              5. Take your time - no rush!
             </Text>
           </View>
           
@@ -414,6 +452,10 @@ export default function PutterCalibrationScreen({ navigation, route }) {
             Profile Consistency: {confidenceScore}%
           </Text>
         )}
+        
+        <Text style={styles.detectionNote}>
+          Detection: Ultra Sensitive Mode
+        </Text>
         
         {processing && (
           <ActivityIndicator size="large" color="#4CAF50" style={styles.loader} />
@@ -557,5 +599,11 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: 20,
+  },
+  detectionNote: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 10,
+    fontStyle: 'italic',
   },
 });
