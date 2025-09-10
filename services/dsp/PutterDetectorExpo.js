@@ -367,7 +367,29 @@ export class PutterDetectorExpo {
     const fluxCheck = features.flux > threshold * 0.5; // Spectral flux threshold
     const crestCheck = features.crestFactor > 2.0; // Impulsive signal check
 
-    // Require multiple criteria for robust detection
+    // Debug output in calibration mode
+    if (this.opts.calibrationMode && this.frameCount % 10 === 0) {
+      console.log('Detection criteria:', {
+        energy: features.energy.toFixed(6),
+        threshold: threshold.toFixed(6),
+        energyCheck,
+        zcr: features.zcr.toFixed(3),
+        zcrThresh: this.opts.zcrThresh,
+        zcrCheck,
+        flux: features.flux.toFixed(6),
+        fluxCheck,
+        crestFactor: features.crestFactor.toFixed(2),
+        crestCheck
+      });
+    }
+
+    // In calibration mode, be MUCH more sensitive
+    if (this.opts.calibrationMode) {
+      // Only require energy check in calibration mode
+      return energyCheck;
+    }
+
+    // Normal mode: Require multiple criteria for robust detection
     const criteriaCount = energyCheck + zcrCheck + fluxCheck + crestCheck;
     
     return criteriaCount >= 3;
