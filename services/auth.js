@@ -82,7 +82,7 @@ export const authenticateUser = async () => {
           isPremium: false, // Will be updated by IAP
           hasCompletedOnboarding: false,
           settings: {
-            defaultBPM: 80,
+            defaultBPM: 40,
             soundEnabled: true,
             hapticEnabled: false,  // Disabled by default
           },
@@ -128,7 +128,7 @@ export const authenticateUser = async () => {
           isPremium: false,
           hasCompletedOnboarding: false,
           settings: {
-            defaultBPM: 80,
+            defaultBPM: 40,
             soundEnabled: true,
             hapticEnabled: false,  // Disabled by default
           },

@@ -10,7 +10,7 @@ import { DetectorFactory } from '../services/dsp/DetectorFactory';
  * @param {number} defaultBpm - Default BPM setting
  * @returns {Object} Hook state and methods
  */
-export function usePuttIQDetector(defaultBpm = 80) {
+export function usePuttIQDetector(defaultBpm = 40) {
   // State management
   const [isInitialized, setInitialized] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
@@ -19,12 +19,15 @@ export function usePuttIQDetector(defaultBpm = 80) {
   const [bpm, setBpm] = useState(defaultBpm);
   const [lastHit, setLastHit] = useState(null);
   const [detectorStats, setDetectorStats] = useState(null);
+  const [beatPosition, setBeatPosition] = useState(0);
+  const [hitHistory, setHitHistory] = useState([]);
 
   // Service references
   const metronomeRef = useRef(null);
   const aecStreamRef = useRef(null);
   const detectorRef = useRef(null);
   const statsIntervalRef = useRef(null);
+  const positionIntervalRef = useRef(null);
 
   // Initialize services on mount
   useEffect(() => {
@@ -96,7 +99,7 @@ export function usePuttIQDetector(defaultBpm = 80) {
               return metronomeRef.current ? metronomeRef.current.getNextTicks(8) : [];
             },
             getBpm: () => {
-              return metronomeRef.current ? metronomeRef.current.getBpm() : 80;
+              return metronomeRef.current ? metronomeRef.current.getBpm() : 40;
             },
             onStrike: (strikeEvent) => {
               console.log('⚡ Strike detected in hook:', {
@@ -105,7 +108,31 @@ export function usePuttIQDetector(defaultBpm = 80) {
                 profileMatch: strikeEvent.profileMatch
               });
               if (mounted) {
-                setLastHit(strikeEvent);
+                // Calculate position in beat
+                const period = 60000 / bpm;
+                const ticks = metronomeRef.current ? metronomeRef.current.getNextTicks(2) : [];
+                let positionInBeat = 0.5; // Default to center
+                
+                if (ticks.length > 0) {
+                  const lastTick = ticks[0] <= strikeEvent.timestamp ? ticks[0] : ticks[0] - period;
+                  positionInBeat = ((strikeEvent.timestamp - lastTick) % period) / period;
+                }
+                
+                // Add position to strike event
+                const hitWithPosition = {
+                  ...strikeEvent,
+                  positionInBeat
+                };
+                
+                setLastHit(hitWithPosition);
+                
+                // Add to history
+                setHitHistory(prev => [...prev.slice(-9), { 
+                  position: positionInBeat,
+                  timestamp: strikeEvent.timestamp,
+                  quality: strikeEvent.quality
+                }]);
+                
                 // Auto-clear hit display after 2 seconds
                 setTimeout(() => {
                   if (mounted) setLastHit(null);
@@ -232,6 +259,21 @@ export function usePuttIQDetector(defaultBpm = 80) {
       // Start stats monitoring
       statsIntervalRef.current = startStatsMonitoring();
       
+      // Start position tracking for visual feedback
+      positionIntervalRef.current = setInterval(() => {
+        if (metronomeRef.current && metronomeRef.current.getIsRunning()) {
+          const now = performance.now();
+          const period = metronomeRef.current.getPeriod();
+          const ticks = metronomeRef.current.getNextTicks(2);
+          
+          if (ticks.length > 0) {
+            const lastTick = ticks[0] <= now ? ticks[0] : ticks[0] - period;
+            const position = ((now - lastTick) % period) / period;
+            setBeatPosition(position);
+          }
+        }
+      }, 16); // ~60fps update rate
+      
     } catch (error) {
       console.error('Failed to start:', error);
       
@@ -290,9 +332,17 @@ export function usePuttIQDetector(defaultBpm = 80) {
         clearInterval(statsIntervalRef.current);
         statsIntervalRef.current = null;
       }
+      
+      // Clear position tracking interval
+      if (positionIntervalRef.current) {
+        clearInterval(positionIntervalRef.current);
+        positionIntervalRef.current = null;
+      }
 
       setRunning(false);
       setLastHit(null);
+      setBeatPosition(0);
+      setHitHistory([]);
       
       console.log('PuttIQ detector stopped');
     } catch (error) {
@@ -399,6 +449,8 @@ export function usePuttIQDetector(defaultBpm = 80) {
     bpm,
     lastHit,
     detectorStats,
+    beatPosition,
+    hitHistory,
     
     // Methods
     start,

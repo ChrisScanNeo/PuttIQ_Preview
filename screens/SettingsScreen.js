@@ -18,7 +18,7 @@ export default function SettingsScreen({ route, navigation }) {
   const user = route.params?.user;
   
   const [settings, setSettings] = useState({
-    defaultBPM: 80,
+    defaultBPM: 40,
     soundEnabled: true,
     hapticEnabled: false,
     debugMode: false,
@@ -123,7 +123,7 @@ export default function SettingsScreen({ route, navigation }) {
           style: 'destructive',
           onPress: () => {
             const defaultSettings = {
-              defaultBPM: 80,
+              defaultBPM: 40,
               soundEnabled: true,
               hapticEnabled: false,
               debugMode: false,

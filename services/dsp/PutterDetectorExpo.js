@@ -68,7 +68,7 @@ export class PutterDetectorExpo {
       zcrThresh: 0.22,
       tickGuardMs: 30,
       getUpcomingTicks: () => [],
-      getBpm: () => 80,  // Default BPM function
+      getBpm: () => 40,  // Default BPM function
       onStrike: () => {},
       useProfiles: true, // Enable profile-based detection by default
       useListeningZone: false, // Disabled by default for backwards compatibility

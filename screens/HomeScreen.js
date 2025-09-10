@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector'; // Using the new detector hook
+import TimingZoneBar from '../components/TimingZoneBar';
 
 export default function HomeScreen({ user }) {
   const [isPremium, setIsPremium] = useState(user?.isPremium || false);
@@ -15,13 +16,15 @@ export default function HomeScreen({ user }) {
     bpm,
     lastHit,
     detectorStats,
+    beatPosition,
+    hitHistory,
     updateBpm,
     updateSensitivity,
     getTimingAccuracy,
     resetCalibration,
     start,
     stop,
-  } = usePuttIQDetector(user?.settings?.defaultBPM || 80) || {};
+  } = usePuttIQDetector(user?.settings?.defaultBPM || 40) || {};
 
   // Update sensitivity when slider changes
   useEffect(() => {
@@ -130,6 +133,19 @@ export default function HomeScreen({ user }) {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Visual timing bar with listening zone */}
+        {isRunning && (
+          <TimingZoneBar
+            isPlaying={isRunning}
+            bpm={bpm}
+            currentPosition={beatPosition}
+            listeningZone={{ start: 0.3, end: 0.7 }}
+            lastHitPosition={lastHit?.positionInBeat}
+            hitHistory={hitHistory}
+            style={styles.timingBar}
+          />
+        )}
 
         <View style={styles.feedbackContainer}>
           <View style={styles.statusRow}>
@@ -428,5 +444,9 @@ const styles = StyleSheet.create({
   statsLabel: {
     fontSize: 11,
     color: '#888',
+  },
+  timingBar: {
+    marginVertical: 10,
+    marginHorizontal: 5,
   },
 });
