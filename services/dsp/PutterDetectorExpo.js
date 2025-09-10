@@ -247,8 +247,15 @@ export class PutterDetectorExpo {
     // Update baseline (adaptive noise floor)
     this.updateBaseline(features.energy);
 
-    // Calculate dynamic threshold
-    const threshold = Math.max(0.0015, this.baseline * this.opts.energyThresh);
+    // Calculate dynamic threshold with fixed minimum for calibration
+    let threshold;
+    if (this.opts.calibrationMode && this.opts.fixedThreshold) {
+      // Use fixed threshold in calibration mode for consistency
+      threshold = this.opts.fixedThreshold;
+    } else {
+      // Normal dynamic threshold
+      threshold = Math.max(0.0015, this.baseline * this.opts.energyThresh);
+    }
 
     // Detect impact
     const isHit = this.detectImpact(features, threshold);

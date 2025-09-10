@@ -40,6 +40,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   const [confidenceScore, setConfidenceScore] = useState(0);
   const [isWarmingUp, setIsWarmingUp] = useState(false);
   const [debugInfo, setDebugInfo] = useState('');
+  const [energyLevel, setEnergyLevel] = useState(0);
   
   // Refs
   const detectorRef = useRef(null);
@@ -51,8 +52,8 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   
   // Constants
   const TOTAL_PUTTS = 10;
-  const VERSION = 'v2.2-INSANE'; // Version indicator - FIXED!
-  const BUILD_DATE = '2024-12-10 15:30'; // Build timestamp
+  const VERSION = 'v2.3-ULTRA-LOW'; // Version with 0.0001 fixed threshold
+  const BUILD_DATE = '2024-12-10 16:00'; // Build timestamp
   const PRE_IMPACT_SAMPLES = 512;  // Capture before impact
   const POST_IMPACT_SAMPLES = 512; // Capture after impact
   
@@ -115,14 +116,15 @@ export default function PutterCalibrationScreen({ navigation, route }) {
       setDebugInfo('Initializing detector...');
       
       try {
-        // Initialize detector with INSANELY sensitive settings for putts
+        // Initialize detector with ULTRA-LOW threshold for soft putts
         const detector = await DetectorFactory.createDetector({
           sampleRate: 16000,
           frameLength: 256,
-          energyThresh: 0.1,     // INSANELY sensitive - will detect even soft putts
-          zcrThresh: 0.03,       // Extremely low threshold
+          energyThresh: 0.01,    // ULTRA-LOW: 10x lower than before (was 0.1)
+          zcrThresh: 0.02,       // Even lower ZCR threshold
           refractoryMs: 1200,    // 1.2 seconds to avoid ball bounce detection
           calibrationMode: true, // Enable special calibration mode (only energy check)
+          fixedThreshold: 0.0001, // Fixed minimum threshold for soft putts
           tickGuardMs: 0,        // Disable metronome guard
           getUpcomingTicks: () => [], // No metronome ticks to check
           bufferSize: PRE_IMPACT_SAMPLES + POST_IMPACT_SAMPLES,
@@ -135,8 +137,8 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         
         // Warm-up period to let baseline stabilize
         setIsWarmingUp(true);
-        setCurrentInstruction('🔥 WARMING UP INSANELY-SENSITIVE DETECTOR (2 seconds)...');
-        setDebugInfo(`Detector initialized with energyThresh: 0.1 (INSANE MODE)`);
+        setCurrentInstruction('🔥 WARMING UP ULTRA-LOW THRESHOLD DETECTOR (2 seconds)...');
+        setDebugInfo(`Fixed threshold: 0.0001 | energyThresh: 0.01`);
         setTimeout(() => {
           setIsWarmingUp(false);
           setDebugInfo('✅ Ready for detection - NO TIME LIMIT!');
@@ -168,6 +170,16 @@ export default function PutterCalibrationScreen({ navigation, route }) {
     // Keep only the last PRE_IMPACT_SAMPLES frames
     if (impactBufferRef.current.length > PRE_IMPACT_SAMPLES / 256) {
       impactBufferRef.current.shift();
+    }
+    
+    // Calculate and display energy for debugging
+    if (frame && frame.length > 0) {
+      let sum = 0;
+      for (let i = 0; i < frame.length; i++) {
+        sum += Math.abs(frame[i] / 32768.0);
+      }
+      const energy = sum / frame.length;
+      setEnergyLevel(energy);
     }
   };
   
@@ -523,13 +535,23 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         )}
         
         <Text style={styles.detectionNote}>
-          Detection: INSANE Mode (0.1 threshold)
+          Detection: ULTRA-LOW Mode (0.0001 fixed)
         </Text>
         
         {debugInfo !== '' && (
           <Text style={styles.debugText}>
             {debugInfo}
           </Text>
+        )}
+        
+        {energyLevel > 0 && (
+          <View style={styles.energyDisplay}>
+            <Text style={styles.energyLabel}>Energy Level:</Text>
+            <Text style={[styles.energyValue, energyLevel > 0.0001 ? styles.energyHigh : styles.energyLow]}>
+              {energyLevel.toFixed(6)}
+            </Text>
+            <Text style={styles.thresholdText}>Threshold: 0.0001</Text>
+          </View>
         )}
         
         {processing && (
@@ -695,6 +717,34 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     marginTop: 5,
     fontFamily: 'monospace',
+  },
+  energyDisplay: {
+    backgroundColor: '#2a2a2a',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  energyLabel: {
+    color: '#888',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  energyValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+  },
+  energyLow: {
+    color: '#FF6B6B',
+  },
+  energyHigh: {
+    color: '#4CAF50',
+  },
+  thresholdText: {
+    color: '#888',
+    fontSize: 11,
+    marginTop: 4,
   },
   versionBadge: {
     position: 'absolute',

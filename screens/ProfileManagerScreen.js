@@ -239,26 +239,38 @@ export default function ProfileManagerScreen({ route, navigation }) {
             onPress={() => setShowOnboarding(true)}
           >
             <Text style={styles.actionButtonText}>🎯 10-PUTT CALIBRATION (NEW!)</Text>
-            <Text style={styles.actionButtonSubtext}>Ultra-Sensitive Mode v2.1</Text>
+            <Text style={styles.actionButtonSubtext}>Ultra-Low 0.0001 Threshold</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.actionButton, styles.secondaryButton]}
+            style={[styles.actionButton, styles.dangerButton]}
             onPress={() => {
               Alert.alert(
-                'Add Ignore Sound',
-                'Record a sound you want to filter out (like background noise)',
+                '🗑️ Clear All Profiles?',
+                'This will delete ALL profiles including test versions. This cannot be undone.',
                 [
                   { text: 'Cancel', style: 'cancel' },
-                  { text: 'Record', onPress: () => {
-                    // TODO: Implement ignore sound recording
-                    Alert.alert('Coming Soon', 'This feature will be available soon');
-                  }}
+                  { 
+                    text: 'Clear All', 
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        // Clear all profiles from the manager
+                        await profileManager.clearAllProfiles();
+                        setProfiles([]);
+                        calculateStats([]);
+                        Alert.alert('Success', 'All profiles have been cleared');
+                      } catch (error) {
+                        console.error('Failed to clear profiles:', error);
+                        Alert.alert('Error', 'Failed to clear profiles');
+                      }
+                    }
+                  }
                 ]
               );
             }}
           >
-            <Text style={styles.actionButtonText}>🔇 Add Ignore</Text>
+            <Text style={styles.actionButtonText}>🗑️ Clear All Profiles</Text>
           </TouchableOpacity>
         </View>
 
@@ -446,6 +458,9 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     backgroundColor: '#FF9800',
+  },
+  dangerButton: {
+    backgroundColor: '#FF3B30',
   },
   actionButtonText: {
     color: 'white',

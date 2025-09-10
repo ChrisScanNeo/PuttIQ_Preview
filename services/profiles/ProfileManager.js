@@ -330,6 +330,43 @@ class ProfileManager {
   }
 
   /**
+   * Clear ALL profiles (including from Firebase)
+   * @returns {Promise<void>}
+   */
+  async clearAllProfiles() {
+    if (!this.userId) {
+      throw new Error('ProfileManager not initialized');
+    }
+    
+    console.log('Clearing all profiles for user:', this.userId);
+    
+    // Get all profile IDs
+    const allProfiles = this.getAllProfiles();
+    
+    // Delete each profile from Firebase (except defaults)
+    for (const profile of allProfiles) {
+      if (!profile.isDefault) { 
+        try {
+          await firebaseProfileService.deleteProfile(this.userId, profile.id);
+        } catch (error) {
+          console.error(`Failed to delete profile ${profile.id}:`, error);
+        }
+      }
+    }
+    
+    // Clear local cache
+    this.profiles.clear();
+    this.enabledProfiles.target = [];
+    this.enabledProfiles.ignore = [];
+    
+    // Reload only default profiles
+    await this.loadDefaultProfiles();
+    this.processProfiles([]);
+    
+    console.log('All profiles cleared, defaults restored');
+  }
+
+  /**
    * Cleanup resources
    */
   cleanup() {
