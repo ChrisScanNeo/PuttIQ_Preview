@@ -183,6 +183,13 @@ export default function ProfileManagerScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Version Banner */}
+        <View style={styles.versionBanner}>
+          <Text style={styles.versionTitle}>🚀 VERSION 2.1-ULTRA</Text>
+          <Text style={styles.versionSubtitle}>Ultra-Sensitive Detection | No Time Limits</Text>
+          <Text style={styles.buildDate}>Build: Dec 10, 2024 - 15:00</Text>
+        </View>
+        
         {/* Stats Section */}
         {stats && (
           <View style={styles.statsCard}>
@@ -317,6 +324,35 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  versionBanner: {
+    backgroundColor: '#FF6B6B',
+    padding: 15,
+    marginHorizontal: 15,
+    marginBottom: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  versionTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  versionSubtitle: {
+    color: 'white',
+    fontSize: 14,
+    marginBottom: 3,
+  },
+  buildDate: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 12,
+    fontStyle: 'italic',
   },
   scrollView: {
     flex: 1,

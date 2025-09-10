@@ -20,6 +20,9 @@ import { spectralAnalysis } from '../services/dsp/SpectralAnalysis';
 const { width: screenWidth } = Dimensions.get('window');
 
 export default function PutterCalibrationScreen({ navigation, route }) {
+  console.log('🚀 PutterCalibrationScreen v2.1-ULTRA loaded! Build: 2024-12-10 15:00');
+  console.log('⚡ Ultra-sensitive detection enabled with NO time limits');
+  
   const { onComplete } = route.params || {};
   
   // State
@@ -43,7 +46,8 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   
   // Constants
   const TOTAL_PUTTS = 10;
-  const LISTENING_WINDOW = 30000; // 30 seconds max per putt (safety timeout)
+  const VERSION = 'v2.1-ULTRA'; // Version indicator
+  const BUILD_DATE = '2024-12-10 15:00'; // Build timestamp
   const PRE_IMPACT_SAMPLES = 512;  // Capture before impact
   const POST_IMPACT_SAMPLES = 512; // Capture after impact
   
@@ -126,10 +130,11 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         
         // Warm-up period to let baseline stabilize
         setIsWarmingUp(true);
-        setCurrentInstruction('Warming up detector (2 seconds)...');
+        setCurrentInstruction('🔥 WARMING UP ULTRA-SENSITIVE DETECTOR (2 seconds)...');
+        setDebugInfo(`Detector initialized with energyThresh: 0.3`);
         setTimeout(() => {
           setIsWarmingUp(false);
-          setDebugInfo('Ready for detection');
+          setDebugInfo('✅ Ready for detection - NO TIME LIMIT!');
           startListeningForPutt();
         }, 2000);
         
@@ -442,11 +447,17 @@ export default function PutterCalibrationScreen({ navigation, route }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
+          <View style={styles.versionBadge}>
+            <Text style={styles.versionText}>VERSION: {VERSION}</Text>
+            <Text style={styles.buildText}>BUILD: {BUILD_DATE}</Text>
+          </View>
           <Text style={styles.title}>Putter Calibration</Text>
           <Text style={styles.description}>
             This calibration will record 10 putts to create a unique sound profile for your putter.
             {'\n\n'}
-            Take your time - there's no time limit. Have 10 balls ready before starting.
+            ⚡ ULTRA-SENSITIVE MODE ENABLED ⚡
+            {'\n'}
+            NO TIME LIMITS - Take as long as you need!
             {'\n\n'}
             This helps the app accurately detect your putts while filtering out background noise.
           </Text>
@@ -483,6 +494,9 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
+        <View style={styles.versionBadge}>
+          <Text style={styles.versionText}>{VERSION} - CALIBRATING</Text>
+        </View>
         <Text style={styles.title}>Recording Putter Profile</Text>
         
         {renderProgress()}
@@ -661,5 +675,24 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     marginTop: 5,
     fontFamily: 'monospace',
+  },
+  versionBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: '#FF6B6B',
+    padding: 8,
+    borderRadius: 5,
+    zIndex: 1000,
+  },
+  versionText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  buildText: {
+    color: 'white',
+    fontSize: 10,
+    marginTop: 2,
   },
 });
