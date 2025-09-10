@@ -1,5 +1,7 @@
 import { FilterCascade } from './Biquad';
 import { Platform } from 'react-native';
+import { profileManager } from '../profiles/ProfileManager';
+import { spectralAnalysis } from './SpectralAnalysis';
 
 // Import ExpoPlayAudioStream correctly as a named export
 let ExpoPlayAudioStream = null;
@@ -44,6 +46,7 @@ try {
  * @property {number} tickGuardMs - Ignore detections near metronome ticks (default 30)
  * @property {Function} getUpcomingTicks - Function returning array of tick timestamps
  * @property {Function} onStrike - Callback for strike events
+ * @property {boolean} useProfiles - Enable profile-based detection (default true)
  */
 
 /**
@@ -62,12 +65,17 @@ export class PutterDetectorExpo {
       tickGuardMs: 30,
       getUpcomingTicks: () => [],
       onStrike: () => {},
+      useProfiles: true, // Enable profile-based detection by default
       ...options
     };
 
     // DSP components
     this.bandpassFilter = null;
     this.initializeFilters();
+    
+    // Profile-based detection
+    this.useProfiles = this.opts.useProfiles !== false; // Use profiles unless explicitly disabled
+    this.profileCheckEnabled = false; // Will be enabled after initialization
 
     // Detection state
     this.baseline = 1e-6;        // Running noise floor
@@ -82,6 +90,10 @@ export class PutterDetectorExpo {
     // Circular buffer for spectral flux calculation
     this.energyHistory = new Array(10).fill(0);
     this.historyIndex = 0;
+    
+    // Buffer for spectrum computation
+    this.frameBuffer = [];
+    this.maxBufferSize = 4; // Keep last 4 frames for FFT
 
     // Audio stream subscription
     this.subscription = null;
@@ -119,6 +131,25 @@ export class PutterDetectorExpo {
     this.isRunning = true;
     this.frameCount = 0;
     this.detectionCount = 0;
+    
+    // Check if profiles are available
+    try {
+      if (profileManager.initialized) {
+        const profiles = profileManager.getEnabledProfiles();
+        this.profileCheckEnabled = profiles.target.length > 0 || profiles.ignore.length > 0;
+        console.log('Profile-based detection:', this.profileCheckEnabled ? 'ENABLED' : 'DISABLED');
+        console.log('Active profiles:', {
+          targets: profiles.target.map(p => p.name),
+          ignores: profiles.ignore.map(p => p.name)
+        });
+      } else {
+        console.log('ProfileManager not initialized, using basic detection');
+        this.profileCheckEnabled = false;
+      }
+    } catch (error) {
+      console.log('Profile check failed, using basic detection:', error.message);
+      this.profileCheckEnabled = false;
+    }
 
     try {
       // Configure recording according to ExpoPlayAudioStream API
@@ -235,10 +266,16 @@ export class PutterDetectorExpo {
     this.frameCount++;
 
     // Convert Int16 to normalized float and apply band-pass filter
-    const filtered = new Array(frame.length);
+    const filtered = new Float32Array(frame.length);
     for (let i = 0; i < frame.length; i++) {
       const normalized = frame[i] / 32768.0; // Int16 to [-1, 1]
       filtered[i] = this.bandpassFilter.process(normalized);
+    }
+    
+    // Store frame for spectrum computation
+    this.frameBuffer.push(filtered);
+    if (this.frameBuffer.length > this.maxBufferSize) {
+      this.frameBuffer.shift();
     }
 
     // Calculate features
@@ -257,8 +294,38 @@ export class PutterDetectorExpo {
       threshold = Math.max(0.0015, this.baseline * this.opts.energyThresh);
     }
 
-    // Detect impact
-    const isHit = this.detectImpact(features, threshold);
+    // Profile-based detection (if enabled)
+    let isHit = false;
+    let profileMatch = null;
+    
+    if (this.profileCheckEnabled && this.useProfiles && features.energy > threshold * 0.5) {
+      // Compute spectrum from recent frames
+      try {
+        const spectrum = this.computeSpectrumFromBuffer();
+        if (spectrum) {
+          // Check against profiles
+          profileMatch = profileManager.checkSpectrum(spectrum);
+          
+          if (profileMatch.type === 'ignore') {
+            // Sound matches ignore profile (e.g., metronome) - filter it out
+            console.log(`Filtered: ${profileMatch.profile} (${(profileMatch.similarity * 100).toFixed(1)}%)`);
+            return; // Skip this frame completely
+          } else if (profileMatch.type === 'target') {
+            // Sound matches target profile (putter) - detect it!
+            isHit = true;
+            console.log(`Detected: ${profileMatch.profile} (${(profileMatch.similarity * 100).toFixed(1)}%)`);
+          }
+          // For 'no_match' or 'pass', fall through to basic detection
+        }
+      } catch (error) {
+        console.error('Profile check failed:', error);
+      }
+    }
+    
+    // Fallback to basic detection if no profile match
+    if (!isHit && !profileMatch) {
+      isHit = this.detectImpact(features, threshold);
+    }
 
     if (isHit) {
       // Check refractory period
@@ -287,7 +354,12 @@ export class PutterDetectorExpo {
         latencyMs: (this.opts.frameLength / this.opts.sampleRate) * 1000,
         zcr: features.zcr,
         confidence,
-        quality
+        quality,
+        profileMatch: profileMatch ? {
+          type: profileMatch.type,
+          profile: profileMatch.profile,
+          similarity: profileMatch.similarity
+        } : null
       };
 
       // Notify callback
@@ -295,6 +367,33 @@ export class PutterDetectorExpo {
     }
   }
 
+  /**
+   * Compute spectrum from buffered frames
+   * @returns {Float32Array|null} Spectral features
+   */
+  computeSpectrumFromBuffer() {
+    if (this.frameBuffer.length === 0) return null;
+    
+    try {
+      // Concatenate recent frames
+      const totalLength = this.frameBuffer.reduce((sum, frame) => sum + frame.length, 0);
+      const concatenated = new Float32Array(totalLength);
+      let offset = 0;
+      
+      for (const frame of this.frameBuffer) {
+        concatenated.set(frame, offset);
+        offset += frame.length;
+      }
+      
+      // Compute spectrum
+      const spectrum = spectralAnalysis.computeSpectrum(concatenated);
+      return spectrum;
+    } catch (error) {
+      console.error('Failed to compute spectrum:', error);
+      return null;
+    }
+  }
+  
   /**
    * Extract audio features from filtered frame
    * @param {number[]} filtered - Filtered audio samples
@@ -497,6 +596,7 @@ export class PutterDetectorExpo {
     this.detectionCount = 0;
     this.energyHistory.fill(0);
     this.historyIndex = 0;
+    this.frameBuffer = [];
     this.bandpassFilter.reset();
   }
 }
