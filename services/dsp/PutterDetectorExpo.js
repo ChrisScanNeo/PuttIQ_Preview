@@ -363,15 +363,22 @@ export class PutterDetectorExpo {
     let isHit = false;
     let profileMatch = null;
     
-    // Log energy levels and zone status periodically for debugging
-    if (this.frameCount % 100 === 0) {
-      console.log(`📊 Energy: ${features.energy.toFixed(6)}, Baseline: ${this.baseline.toFixed(6)}, Threshold: ${threshold.toFixed(6)}`);
+    // ALWAYS log energy periodically to debug detection issues
+    if (this.frameCount % 50 === 0) {
+      console.log(`📊 Frame ${this.frameCount}: Energy=${features.energy.toFixed(6)}, Baseline=${this.baseline.toFixed(6)}, Threshold=${threshold.toFixed(6)}`);
+      console.log(`   ZCR=${features.zcr.toFixed(3)}, Crest=${features.crestFactor.toFixed(2)}, Flux=${features.flux.toFixed(6)}`);
       if (this.opts.useListeningZone) {
-        console.log(`🎯 Listening zone: ${zoneCheck.reason} (${(zoneCheck.zoneStart * 100).toFixed(0)}%-${(zoneCheck.zoneEnd * 100).toFixed(0)}% of beat)`);
+        console.log(`   Zone: ${zoneCheck.reason}`);
       }
     }
     
-    if (this.profileCheckEnabled && this.useProfiles && features.energy > threshold * 0.5) {
+    // Log any sound above baseline
+    if (features.energy > this.baseline * 1.5) {
+      console.log(`🔊 Sound detected: Energy=${features.energy.toFixed(6)} (${(features.energy/threshold * 100).toFixed(0)}% of threshold)`);
+    }
+    
+    // Check profiles for ANY sound above minimal threshold (not 0.5x)
+    if (this.profileCheckEnabled && this.useProfiles && features.energy > this.baseline * 2) {
       // Compute spectrum from recent frames
       try {
         const spectrum = this.computeSpectrumFromBuffer();
@@ -397,16 +404,18 @@ export class PutterDetectorExpo {
       } catch (error) {
         console.error('❌ Profile check failed:', error);
       }
-    } else if (features.energy > threshold * 0.5 && features.energy <= threshold) {
-      // Sound is in the "maybe" range - log for debugging
-      if (this.frameCount % 20 === 0) {
-        console.log(`📉 Sub-threshold sound: energy=${features.energy.toFixed(6)} (need >${threshold.toFixed(6)})`);
-      }
+    } else if (features.energy > this.baseline * 2) {
+      // Any sound above baseline but below profile check
+      console.log(`📉 Low energy sound: ${features.energy.toFixed(6)} (${(features.energy/threshold * 100).toFixed(0)}% of threshold)`);
+      console.log(`   Attempting basic detection anyway...`);
     }
     
-    // Fallback to basic detection if no profile match
-    if (!isHit && !profileMatch) {
+    // Always try basic detection if no profile match (don't require profile match)
+    if (!isHit) {
       isHit = this.detectImpact(features, threshold);
+      if (isHit && !profileMatch) {
+        console.log(`🎯 Basic detection triggered (no profile match)`);
+      }
     }
 
     if (isHit) {
@@ -561,35 +570,38 @@ export class PutterDetectorExpo {
     // Multi-criteria detection
     const energyCheck = features.energy > threshold;
     const zcrCheck = features.zcr > this.opts.zcrThresh;
-    const fluxCheck = features.flux > threshold * 0.5; // Spectral flux threshold
-    const crestCheck = features.crestFactor > 2.0; // Impulsive signal check
+    const fluxCheck = features.flux > threshold * 0.3; // Lower flux threshold
+    const crestCheck = features.crestFactor > 1.5; // Lower crest requirement
 
-    // Debug output in calibration mode
-    if (this.opts.calibrationMode && this.frameCount % 10 === 0) {
-      console.log('Detection criteria:', {
-        energy: features.energy.toFixed(6),
-        threshold: threshold.toFixed(6),
-        energyCheck,
-        zcr: features.zcr.toFixed(3),
-        zcrThresh: this.opts.zcrThresh,
-        zcrCheck,
-        flux: features.flux.toFixed(6),
-        fluxCheck,
-        crestFactor: features.crestFactor.toFixed(2),
-        crestCheck
+    // Always log detection attempt details when energy is significant
+    if (features.energy > this.baseline * 3) {
+      console.log('🔍 Detection check:', {
+        energy: `${features.energy.toFixed(6)} > ${threshold.toFixed(6)} = ${energyCheck}`,
+        zcr: `${features.zcr.toFixed(3)} > ${this.opts.zcrThresh} = ${zcrCheck}`,
+        flux: `${features.flux.toFixed(6)} > ${(threshold * 0.3).toFixed(6)} = ${fluxCheck}`,
+        crest: `${features.crestFactor.toFixed(2)} > 1.5 = ${crestCheck}`,
+        criteria: `${energyCheck + zcrCheck + fluxCheck + crestCheck}/4`
       });
     }
 
-    // In calibration mode, be MUCH more sensitive
-    if (this.opts.calibrationMode) {
-      // Only require energy check in calibration mode
+    // In calibration mode or when debugging, be MUCH more sensitive
+    if (this.opts.calibrationMode || this.opts.debugMode) {
+      // Only require energy check in calibration/debug mode
+      if (energyCheck) {
+        console.log('✅ Calibration mode: Energy check passed!');
+      }
       return energyCheck;
     }
 
-    // Normal mode: Require multiple criteria for robust detection
+    // Normal mode: Only require 2 criteria (was 3)
     const criteriaCount = energyCheck + zcrCheck + fluxCheck + crestCheck;
     
-    return criteriaCount >= 3;
+    if (criteriaCount >= 2 && features.energy > this.baseline * 2) {
+      console.log(`✅ Detection criteria met: ${criteriaCount}/4`);
+      return true;
+    }
+    
+    return false;
   }
 
   /**

@@ -18,10 +18,12 @@ export default function HomeScreen({ user }) {
     detectorStats,
     beatPosition,
     hitHistory,
+    debugMode,
     updateBpm,
     updateSensitivity,
     getTimingAccuracy,
     resetCalibration,
+    toggleDebugMode,
     start,
     stop,
   } = usePuttIQDetector(user?.settings?.defaultBPM || 40) || {};
@@ -125,12 +127,23 @@ export default function HomeScreen({ user }) {
           </TouchableOpacity>
 
           {!isRunning && isInitialized && (
-            <TouchableOpacity
-              style={styles.calibrateButton}
-              onPress={resetCalibration}
-            >
-              <Text style={styles.calibrateButtonText}>🎯 Calibrate</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.calibrateButton}
+                onPress={resetCalibration}
+              >
+                <Text style={styles.calibrateButtonText}>🎯 Calibrate</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.calibrateButton, debugMode && styles.debugActive]}
+                onPress={toggleDebugMode}
+              >
+                <Text style={styles.calibrateButtonText}>
+                  {debugMode ? '🔍 Debug ON' : '🔍 Debug OFF'}
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
 
@@ -448,5 +461,8 @@ const styles = StyleSheet.create({
   timingBar: {
     marginVertical: 10,
     marginHorizontal: 5,
+  },
+  debugActive: {
+    backgroundColor: '#FF9800',
   },
 });

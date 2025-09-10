@@ -21,6 +21,7 @@ export function usePuttIQDetector(defaultBpm = 40) {
   const [detectorStats, setDetectorStats] = useState(null);
   const [beatPosition, setBeatPosition] = useState(0);
   const [hitHistory, setHitHistory] = useState([]);
+  const [debugMode, setDebugMode] = useState(true); // Enable debug mode by default for testing
 
   // Service references
   const metronomeRef = useRef(null);
@@ -89,6 +90,8 @@ export function usePuttIQDetector(defaultBpm = 40) {
             zcrThresh: 0.10,       // Very low threshold for putter detection
             tickGuardMs: 50,       // Smaller guard since we have listening zone
             useProfiles: true,     // Explicitly enable profile-based detection
+            debugMode: debugMode,  // Enable debug logging
+            calibrationMode: debugMode, // Use calibration mode when debugging
             
             // Listening zone configuration - only detect in middle portion of beat
             useListeningZone: true,      // Enable listening zone feature
@@ -408,6 +411,23 @@ export function usePuttIQDetector(defaultBpm = 40) {
   }, []);
 
   /**
+   * Toggle debug/calibration mode
+   */
+  const toggleDebugMode = useCallback(() => {
+    setDebugMode(prev => {
+      const newMode = !prev;
+      console.log(`Debug mode: ${newMode ? 'ON' : 'OFF'}`);
+      if (detectorRef.current) {
+        detectorRef.current.updateParams({ 
+          debugMode: newMode,
+          calibrationMode: newMode 
+        });
+      }
+      return newMode;
+    });
+  }, []);
+
+  /**
    * Get timing accuracy relative to metronome
    */
   const getTimingAccuracy = useCallback(() => {
@@ -451,6 +471,7 @@ export function usePuttIQDetector(defaultBpm = 40) {
     detectorStats,
     beatPosition,
     hitHistory,
+    debugMode,
     
     // Methods
     start,
@@ -458,6 +479,7 @@ export function usePuttIQDetector(defaultBpm = 40) {
     updateBpm,
     updateSensitivity,
     resetCalibration,
+    toggleDebugMode,
     getTimingAccuracy
   };
 }
