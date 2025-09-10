@@ -197,7 +197,7 @@ class ProfileBuilder {
    * @returns {Object} Profile result
    */
   async buildFromCalibration(calibrationData) {
-    const { impacts, name, kind = 'target', threshold = 0.75, metadata = {} } = calibrationData;
+    const { impacts, name, kind = 'target', threshold = 0.5, metadata = {} } = calibrationData;
     
     console.log(`Building calibrated profile from ${impacts.length} discrete impacts`);
     

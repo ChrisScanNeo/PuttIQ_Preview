@@ -84,16 +84,16 @@ export function usePuttIQDetector(defaultBpm = 40) {
           const detectorOptions = {
             sampleRate: 16000,
             frameLength: 256,
-            refractoryMs: 150,     // Even faster response for quick putts
-            energyThresh: 3,       // VERY SENSITIVE for testing
-            zcrThresh: 0.15,       // Lower threshold for better detection
-            tickGuardMs: 80,       // Wider guard window for metronome filtering
+            refractoryMs: 100,     // Very fast response for putts
+            energyThresh: 2,       // EXTREMELY SENSITIVE for profile capture
+            zcrThresh: 0.10,       // Very low threshold for putter detection
+            tickGuardMs: 50,       // Smaller guard since we have listening zone
             useProfiles: true,     // Explicitly enable profile-based detection
             
             // Listening zone configuration - only detect in middle portion of beat
             useListeningZone: true,      // Enable listening zone feature
-            listeningZonePercent: 0.40,  // Listen for 40% of beat period
-            listeningZoneOffset: 0.30,   // Start at 30% into beat (30%-70%)
+            listeningZonePercent: 0.60,  // Listen for 60% of beat period (expanded by 50%)
+            listeningZoneOffset: 0.20,   // Start at 20% into beat (20%-80%)
             
             getUpcomingTicks: () => {
               return metronomeRef.current ? metronomeRef.current.getNextTicks(8) : [];
@@ -355,7 +355,7 @@ export function usePuttIQDetector(defaultBpm = 40) {
    * Update BPM value
    */
   const updateBpm = useCallback((newBpm) => {
-    const clampedBpm = Math.max(60, Math.min(100, Math.round(newBpm)));
+    const clampedBpm = Math.max(30, Math.min(60, Math.round(newBpm)));
     setBpm(clampedBpm);
     
     if (metronomeRef.current) {

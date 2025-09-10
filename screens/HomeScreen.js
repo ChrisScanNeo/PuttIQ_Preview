@@ -77,11 +77,11 @@ export default function HomeScreen({ user }) {
         <View style={styles.metronomeArea}>
           <Text style={styles.bpmText}>Tempo: {bpm} BPM</Text>
           <View style={styles.sliderContainer}>
-            <Text style={styles.sliderLabel}>60</Text>
+            <Text style={styles.sliderLabel}>30</Text>
             <Slider
               style={styles.slider}
-              minimumValue={60}
-              maximumValue={100}
+              minimumValue={30}
+              maximumValue={60}
               value={bpm}
               onValueChange={updateBpm}
               step={1}
@@ -89,7 +89,7 @@ export default function HomeScreen({ user }) {
               maximumTrackTintColor="#ccc"
               disabled={isRunning}
             />
-            <Text style={styles.sliderLabel}>100</Text>
+            <Text style={styles.sliderLabel}>60</Text>
           </View>
 
           {!isRunning && (
@@ -140,7 +140,7 @@ export default function HomeScreen({ user }) {
             isPlaying={isRunning}
             bpm={bpm}
             currentPosition={beatPosition}
-            listeningZone={{ start: 0.3, end: 0.7 }}
+            listeningZone={{ start: 0.2, end: 0.8 }}
             lastHitPosition={lastHit?.positionInBeat}
             hitHistory={hitHistory}
             style={styles.timingBar}

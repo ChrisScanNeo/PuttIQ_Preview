@@ -55,10 +55,10 @@ export class Metronome {
 
   /**
    * Set the BPM (beats per minute)
-   * @param {number} bpm - Target BPM (40-200)
+   * @param {number} bpm - Target BPM (30-200)
    */
   setBpm(bpm) {
-    this.bpm = Math.max(40, Math.min(200, bpm));
+    this.bpm = Math.max(30, Math.min(200, bpm));
   }
 
   /**
