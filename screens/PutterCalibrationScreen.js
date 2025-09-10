@@ -122,7 +122,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
           frameLength: 256,
           energyThresh: 0.01,    // ULTRA-LOW: 10x lower than before (was 0.1)
           zcrThresh: 0.02,       // Even lower ZCR threshold
-          refractoryMs: 1200,    // 1.2 seconds to avoid ball bounce detection
+          refractoryMs: 800,     // Reduced to 0.8 seconds for faster response
           calibrationMode: true, // Enable special calibration mode (only energy check)
           fixedThreshold: 0.0001, // Fixed minimum threshold for soft putts
           tickGuardMs: 0,        // Disable metronome guard
@@ -141,8 +141,10 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         setDebugInfo(`Fixed threshold: 0.0001 | energyThresh: 0.01`);
         setTimeout(() => {
           setIsWarmingUp(false);
-          setDebugInfo('✅ Ready for detection - NO TIME LIMIT!');
-          startListeningForPutt();
+          setIsListening(true); // Start listening immediately after warm-up
+          setDebugInfo('✅ Ready for detection - LISTENING!');
+          setCurrentInstruction(`Ready for putt 1 of ${TOTAL_PUTTS} - Take your time`);
+          console.log('Warm-up complete - now listening for impacts');
         }, 2000);
         
       } catch (error) {
@@ -184,13 +186,18 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   };
   
   const handlePuttDetected = async (strike) => {
-    if (!isListening || isWarmingUp) return;
+    console.log('Strike callback triggered:', { isListening, isWarmingUp, strike });
     
-    console.log('Putt detected:', strike);
+    if (!isListening || isWarmingUp) {
+      console.log('Ignoring strike - not ready:', { isListening, isWarmingUp });
+      return;
+    }
+    
+    console.log('PUTT DETECTED! Processing:', strike);
     setDebugInfo(`Detected! Energy: ${strike.energy?.toFixed(4) || 'N/A'}`);
     
-    // Stop listening
-    setIsListening(false);
+    // Don't stop listening - wait for next putt
+    // setIsListening(false); // REMOVED - keep listening
     if (listeningTimeoutRef.current) {
       clearTimeout(listeningTimeoutRef.current);
     }
@@ -267,12 +274,13 @@ export default function PutterCalibrationScreen({ navigation, route }) {
     
     // Check if done
     if (newCount >= TOTAL_PUTTS) {
+      setIsListening(false); // Stop listening when done
       await completeCalibration(newCalibrationData);
     } else {
-      // Wait a moment then listen for next putt
-      setTimeout(() => {
-        startListeningForPutt();
-      }, 1500);
+      // Ready for next putt immediately
+      setCurrentInstruction(`Ready for putt ${newCount + 1} of ${TOTAL_PUTTS} - Take your time`);
+      setDebugInfo(`Putt ${newCount} recorded! Listening for next...`);
+      // Keep isListening true - don't need to restart
     }
   };
   
@@ -559,12 +567,30 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         )}
         
         {!processing && (
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={cancelCalibration}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity
+              style={[styles.cancelButton, { backgroundColor: '#4CAF50', marginBottom: 10 }]}
+              onPress={() => {
+                console.log('Manual detection triggered');
+                const manualStrike = {
+                  timestamp: Date.now(),
+                  energy: 0.001,
+                  confidence: 1.0,
+                  manual: true
+                };
+                handlePuttDetected(manualStrike);
+              }}
+            >
+              <Text style={styles.cancelButtonText}>Manual Detection (Test)</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={cancelCalibration}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
