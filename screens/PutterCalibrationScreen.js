@@ -24,9 +24,12 @@ const isSmallScreen = screenWidth < 375;
 const isTinyScreen = screenHeight < 600;
 
 export default function PutterCalibrationScreen({ navigation, route }) {
-  console.log('🚀 PutterCalibrationScreen v3.0-COUNTDOWN loaded!');
-  console.log('⏱️ Using countdown-based recording (3-2-1-RECORD)');
-  console.log('✅ Guaranteed capture of all 10 putts');
+  // Only log once on mount
+  useEffect(() => {
+    console.log('🚀 PutterCalibrationScreen v3.0-COUNTDOWN loaded!');
+    console.log('⏱️ Using countdown-based recording (3-2-1-RECORD)');
+    console.log('✅ Guaranteed capture of all 10 putts');
+  }, []);
   
   const { onComplete } = route.params || {};
   
@@ -34,17 +37,17 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [puttCount, setPuttCount] = useState(0);
   const [processing, setProcessing] = useState(false);
-  const [recordings, setRecordings] = useState([]);
   const [currentInstruction, setCurrentInstruction] = useState('');
   const [countdown, setCountdown] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [phase, setPhase] = useState('ready'); // ready, countdown, recording, processing
   
-  // Refs
+  // Refs - use ref for recordings to avoid state loss
   const animatedScale = useRef(new Animated.Value(1)).current;
   const animatedOpacity = useRef(new Animated.Value(1)).current;
   const countdownSoundRef = useRef(null);
   const successSoundRef = useRef(null);
+  const recordingsRef = useRef([]);
   
   const TOTAL_PUTTS = 10;
   const VERSION = 'v3.0-COUNTDOWN';
@@ -100,7 +103,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
       
       // Reset state
       setPuttCount(0);
-      setRecordings([]);
+      recordingsRef.current = [];
       setIsCalibrating(true);
       setPhase('ready');
       
@@ -234,15 +237,15 @@ export default function PutterCalibrationScreen({ navigation, route }) {
       const audioData = await recordingManager.loadRecording(recordingData.uri);
       const features = recordingManager.extractFeatures(audioData);
       
-      // Store recording data
-      const newRecordings = [...recordings, {
+      // Store recording data in ref to avoid state loss
+      recordingsRef.current.push({
         puttNumber,
         recordingData,
         audioData,
         features,
         timestamp: Date.now()
-      }];
-      setRecordings(newRecordings);
+      });
+      console.log(`Stored putt ${puttNumber}, total recordings: ${recordingsRef.current.length}`);
       
       // Update count
       setPuttCount(puttNumber);
@@ -273,9 +276,16 @@ export default function PutterCalibrationScreen({ navigation, route }) {
     setCurrentInstruction('Processing your putter profile...');
     
     try {
+      console.log(`Building profile from ${recordingsRef.current.length} recordings`);
+      
+      // Validate we have recordings
+      if (!recordingsRef.current || recordingsRef.current.length === 0) {
+        throw new Error('No recordings found to build profile');
+      }
+      
       // Build profile from recordings
       const profileData = {
-        impacts: recordings.map(r => ({
+        impacts: recordingsRef.current.map(r => ({
           timestamp: r.timestamp,
           energy: r.features.maxEnergy,
           spectralFeatures: r.features.impactWindow,
@@ -285,27 +295,32 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         kind: 'target',
         threshold: 0.7,
         metadata: {
-          calibrationPutts: TOTAL_PUTTS,
+          calibrationPutts: recordingsRef.current.length,
           recordingMethod: 'countdown',
           version: VERSION,
           createdAt: Date.now()
         }
       };
       
-      const profile = await profileBuilder.buildFromCalibration(profileData);
+      const result = await profileBuilder.buildFromCalibration(profileData);
+      
+      // Check if profile building succeeded
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to build profile from recordings');
+      }
       
       // Save profile
-      await profileManager.saveProfile(profile);
+      await profileManager.saveProfile(result.profile);
       
       // Success!
       Alert.alert(
         '🎯 Calibration Complete!',
-        `Your putter profile has been created from ${TOTAL_PUTTS} recorded putts.\n\nThe app will now detect your putts more accurately.`,
+        `Your putter profile has been created from ${recordingsRef.current.length} recorded putts.\n\nThe app will now detect your putts more accurately.`,
         [
           {
             text: 'Done',
             onPress: () => {
-              if (onComplete) onComplete(profile);
+              if (onComplete) onComplete(result.profile);
               navigation.goBack();
             }
           }
