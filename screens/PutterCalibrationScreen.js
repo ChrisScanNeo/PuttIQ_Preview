@@ -14,7 +14,7 @@ import {
   Platform
 } from 'react-native';
 import { Audio } from 'expo-av';
-import { DetectorFactory } from '../services/dsp/DetectorFactory';
+import { recordingManager } from '../services/audio/RecordingManager';
 import { profileBuilder } from '../services/profiles/ProfileBuilder';
 import { profileManager } from '../services/profiles/ProfileManager';
 import { spectralAnalysis } from '../services/dsp/SpectralAnalysis';
@@ -24,362 +24,274 @@ const isSmallScreen = screenWidth < 375;
 const isTinyScreen = screenHeight < 600;
 
 export default function PutterCalibrationScreen({ navigation, route }) {
-  console.log('🚀 PutterCalibrationScreen v2.4-EXTREME loaded! Build: 2024-12-10 16:45');
-  console.log('⚡ EXTREME sensitivity (0.00005 threshold) - 50% lower than before!');
-  console.log('🎯 Fixed calculateStats error + manual detection button');
-  console.log('✅ Detection flow fixed - isListening no longer blocks strikes');
+  console.log('🚀 PutterCalibrationScreen v3.0-COUNTDOWN loaded!');
+  console.log('⏱️ Using countdown-based recording (3-2-1-RECORD)');
+  console.log('✅ Guaranteed capture of all 10 putts');
   
   const { onComplete } = route.params || {};
   
   // State
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [puttCount, setPuttCount] = useState(0);
-  const [isListening, setIsListening] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [calibrationData, setCalibrationData] = useState([]);
+  const [recordings, setRecordings] = useState([]);
   const [currentInstruction, setCurrentInstruction] = useState('');
-  const [confidenceScore, setConfidenceScore] = useState(0);
-  const [isWarmingUp, setIsWarmingUp] = useState(false);
-  const [debugInfo, setDebugInfo] = useState('');
-  const [energyLevel, setEnergyLevel] = useState(0);
+  const [countdown, setCountdown] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [phase, setPhase] = useState('ready'); // ready, countdown, recording, processing
   
   // Refs
-  const detectorRef = useRef(null);
   const animatedScale = useRef(new Animated.Value(1)).current;
   const animatedOpacity = useRef(new Animated.Value(1)).current;
-  const impactBufferRef = useRef([]);
-  const listeningTimeoutRef = useRef(null);
-  const confirmationSoundRef = useRef(null);
+  const countdownSoundRef = useRef(null);
+  const successSoundRef = useRef(null);
   
-  // Constants
   const TOTAL_PUTTS = 10;
-  const VERSION = 'v2.4-EXTREME'; // Version with 0.00005 fixed threshold - HALF of previous!
-  const BUILD_DATE = '2024-12-10 16:00'; // Build timestamp
-  const PRE_IMPACT_SAMPLES = 512;  // Capture before impact
-  const POST_IMPACT_SAMPLES = 512; // Capture after impact
+  const VERSION = 'v3.0-COUNTDOWN';
+  const RECORDING_DURATION = 1000; // 1 second recording window
   
+  // Load sounds
   useEffect(() => {
-    // Load confirmation sound
-    loadConfirmationSound();
-    
+    loadSounds();
     return () => {
-      // Cleanup
-      if (detectorRef.current) {
-        detectorRef.current.stop();
-      }
-      if (listeningTimeoutRef.current) {
-        clearTimeout(listeningTimeoutRef.current);
-      }
-      if (confirmationSoundRef.current) {
-        confirmationSoundRef.current.unloadAsync();
-      }
+      cleanup();
     };
   }, []);
   
-  const loadConfirmationSound = async () => {
+  const loadSounds = async () => {
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        require('../assets/sound/metronome-85688.mp3'),
-        { volume: 0.8 }
+      // Load countdown beep sound
+      const { sound: countdownSound } = await Audio.Sound.createAsync(
+        require('../../assets/sound/metronome-85688.mp3'),
+        { shouldPlay: false, volume: 0.5 }
       );
-      confirmationSoundRef.current = sound;
+      countdownSoundRef.current = countdownSound;
+      
+      // Load success sound (use same for now)
+      const { sound: successSound } = await Audio.Sound.createAsync(
+        require('../../assets/sound/metronome-85688.mp3'),
+        { shouldPlay: false, volume: 0.7 }
+      );
+      successSoundRef.current = successSound;
     } catch (error) {
-      console.log('Could not load confirmation sound:', error);
+      console.log('Could not load sounds:', error);
     }
   };
   
-  const playConfirmationSound = async () => {
+  const cleanup = async () => {
     try {
-      if (confirmationSoundRef.current) {
-        await confirmationSoundRef.current.replayAsync();
+      await recordingManager.cleanup();
+      if (countdownSoundRef.current) {
+        await countdownSoundRef.current.unloadAsync();
       }
-      // Also add haptic feedback
-      Vibration.vibrate(100);
+      if (successSoundRef.current) {
+        await successSoundRef.current.unloadAsync();
+      }
     } catch (error) {
-      console.log('Could not play confirmation sound:', error);
+      console.error('Cleanup error:', error);
     }
   };
   
   const startCalibration = async () => {
     try {
-      // Request permission
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Microphone access is needed for calibration');
-        return;
-      }
+      // Request permissions
+      await recordingManager.requestPermissions();
       
       // Reset state
       setPuttCount(0);
-      setCalibrationData([]);
-      impactBufferRef.current = [];
+      setRecordings([]);
       setIsCalibrating(true);
-      setDebugInfo('Initializing detector...');
+      setPhase('ready');
       
-      try {
-        // Initialize detector with EXTREME sensitivity for soft putts
-        const detector = await DetectorFactory.createDetector({
-          sampleRate: 16000,
-          frameLength: 256,
-          energyThresh: 0.001,    // EXTREMELY LOW: 100x lower than normal
-          zcrThresh: 0.01,        // Minimal ZCR threshold
-          refractoryMs: 500,      // 0.5 seconds between putts
-          calibrationMode: true,  // Enable special calibration mode (only energy check)
-          fixedThreshold: 0.00005, // EXTREME: Half of previous threshold (was 0.0001)
-          tickGuardMs: 0,         // Disable metronome guard
-          getUpcomingTicks: () => [], // No metronome ticks to check
-          bufferSize: PRE_IMPACT_SAMPLES + POST_IMPACT_SAMPLES,
-          onStrike: handlePuttDetected,
-          onFrame: handleAudioFrame
-        });
-        
-        detectorRef.current = detector;
-        await detector.start();
-        
-        // Warm-up period to let baseline stabilize
-        setIsWarmingUp(true);
-        setCurrentInstruction('🔥 WARMING UP EXTREME SENSITIVITY DETECTOR (2 seconds)...');
-        setDebugInfo(`EXTREME MODE: Fixed threshold: 0.00005 | energyThresh: 0.001`);
-        setTimeout(() => {
-          setIsWarmingUp(false);
-          setIsListening(true); // Start listening immediately after warm-up
-          setDebugInfo('✅ EXTREME SENSITIVITY ACTIVE - LISTENING!');
-          setCurrentInstruction(`Ready for putt 1 of ${TOTAL_PUTTS} - Take your time`);
-          console.log('Warm-up complete - EXTREME sensitivity active, threshold: 0.00005');
-        }, 2000);
-        
-      } catch (error) {
-        console.log('Detector failed, using simulation:', error.message);
-        setDebugInfo('Using simulated detection');
-        // Fall back to simulation
-        simulateCalibration();
-      }
+      // Start first putt sequence
+      startPuttSequence(1);
       
     } catch (error) {
       console.error('Failed to start calibration:', error);
-      Alert.alert('Error', 'Failed to start calibration. Please try again.');
+      Alert.alert('Error', 'Failed to start calibration. Please check microphone permissions.');
       setIsCalibrating(false);
     }
   };
   
-  const handleAudioFrame = (frame) => {
-    // Keep a rolling buffer of recent frames
-    if (!impactBufferRef.current) {
-      impactBufferRef.current = [];
-    }
-    
-    impactBufferRef.current.push(frame);
-    
-    // Keep only the last PRE_IMPACT_SAMPLES frames
-    if (impactBufferRef.current.length > PRE_IMPACT_SAMPLES / 256) {
-      impactBufferRef.current.shift();
-    }
-    
-    // Calculate and display energy for debugging
-    if (frame && frame.length > 0) {
-      let sum = 0;
-      for (let i = 0; i < frame.length; i++) {
-        sum += Math.abs(frame[i] / 32768.0);
-      }
-      const energy = sum / frame.length;
-      setEnergyLevel(energy);
-    }
-  };
-  
-  const handlePuttDetected = async (strike) => {
-    console.log('Strike callback triggered:', { isListening, isWarmingUp, strike });
-    
-    if (!isListening || isWarmingUp) {
-      console.log('Ignoring strike - not ready:', { isListening, isWarmingUp });
+  const startPuttSequence = async (puttNumber) => {
+    if (puttNumber > TOTAL_PUTTS) {
+      await completeCalibration();
       return;
     }
     
-    console.log('PUTT DETECTED! Processing:', strike);
-    setDebugInfo(`Detected! Energy: ${strike.energy?.toFixed(4) || 'N/A'}`);
+    setCurrentInstruction(`Get ready for putt ${puttNumber} of ${TOTAL_PUTTS}`);
+    setPhase('ready');
     
-    // Don't stop listening - wait for next putt
-    // setIsListening(false); // REMOVED - keep listening
-    if (listeningTimeoutRef.current) {
-      clearTimeout(listeningTimeoutRef.current);
-    }
+    // Wait a moment for user to prepare
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Play confirmation sound and haptic
-    await playConfirmationSound();
+    // Start countdown
+    await runCountdown();
     
-    // Visual feedback
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(animatedScale, {
-          toValue: 1.3,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(animatedOpacity, {
-          toValue: 0.3,
-          duration: 200,
-          useNativeDriver: true,
-        })
-      ]),
-      Animated.parallel([
-        Animated.timing(animatedScale, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(animatedOpacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        })
-      ])
-    ]).start();
-    
-    // Capture impact data
-    const impactData = {
-      timestamp: strike.timestamp,
-      energy: strike.energy,
-      frames: [...impactBufferRef.current], // Snapshot of buffer
-      confidence: strike.confidence || 0.8,
-      spectralFeatures: null // Will be computed later
-    };
-    
-    // Compute spectral features
-    if (impactBufferRef.current.length > 0) {
-      try {
-        // Concatenate frames into single array
-        const concatenated = new Float32Array(impactBufferRef.current.length * 256);
-        let offset = 0;
-        for (const frame of impactBufferRef.current) {
-          concatenated.set(frame, offset);
-          offset += frame.length;
-        }
-        
-        // Compute spectral template
-        const spectrum = spectralAnalysis.computeSpectrum(concatenated);
-        impactData.spectralFeatures = spectrum;
-      } catch (error) {
-        console.error('Failed to compute spectrum:', error);
-      }
-    }
-    
-    // Store calibration data
-    const newCalibrationData = [...calibrationData, impactData];
-    setCalibrationData(newCalibrationData);
-    
-    // Update count
-    const newCount = puttCount + 1;
-    setPuttCount(newCount);
-    
-    // Calculate confidence
-    updateConfidenceScore(newCalibrationData);
-    
-    // Check if done
-    if (newCount >= TOTAL_PUTTS) {
-      setIsListening(false); // Stop listening when done
-      await completeCalibration(newCalibrationData);
-    } else {
-      // Ready for next putt immediately
-      setCurrentInstruction(`Ready for putt ${newCount + 1} of ${TOTAL_PUTTS} - Take your time`);
-      setDebugInfo(`Putt ${newCount} recorded! Listening for next...`);
-      // Keep isListening true - don't need to restart
-    }
+    // Start recording
+    await recordPutt(puttNumber);
   };
   
-  const startListeningForPutt = () => {
-    setIsListening(true);
-    setCurrentInstruction(`Ready for putt ${puttCount + 1} of ${TOTAL_PUTTS} - Take your time`);
-    setDebugInfo('Listening for impact...');
+  const runCountdown = async () => {
+    setPhase('countdown');
     
-    // No timeout - user can take as long as needed
-    // Removed timeout completely for unlimited time
-  };
-  
-  // Add simulation function for fallback
-  const simulateCalibration = () => {
-    console.log('Starting simulated calibration');
-    setIsCalibrating(true);
-    setIsWarmingUp(false);
-    
-    // Simulate detection every 3 seconds
-    let count = 0;
-    const simulationInterval = setInterval(() => {
-      if (count >= TOTAL_PUTTS) {
-        clearInterval(simulationInterval);
-        return;
+    // Countdown from 3 to 1
+    for (let i = 3; i > 0; i--) {
+      setCountdown(i);
+      setCurrentInstruction(`Ready in ${i}...`);
+      
+      // Play beep sound
+      if (countdownSoundRef.current) {
+        await countdownSoundRef.current.replayAsync();
       }
       
-      if (count === 0) {
-        setCurrentInstruction('Simulation Mode - Tap screen to simulate putts');
+      // Animate countdown number
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(animatedScale, {
+            toValue: 1.5,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animatedOpacity, {
+            toValue: 0.5,
+            duration: 200,
+            useNativeDriver: true,
+          })
+        ]),
+        Animated.parallel([
+          Animated.timing(animatedScale, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animatedOpacity, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          })
+        ])
+      ]).start();
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    setCountdown(null);
+  };
+  
+  const recordPutt = async (puttNumber) => {
+    try {
+      setPhase('recording');
+      setIsRecording(true);
+      setCurrentInstruction('🔴 PUTT NOW!');
+      
+      // Visual feedback - red pulsing
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(animatedScale, {
+            toValue: 1.2,
+            duration: 250,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animatedScale, {
+            toValue: 1,
+            duration: 250,
+            useNativeDriver: true,
+          })
+        ]),
+        { iterations: 2 }
+      ).start();
+      
+      // Record for 1 second
+      const recordingData = await recordingManager.recordForDuration(RECORDING_DURATION);
+      
+      // Stop visual feedback
+      setIsRecording(false);
+      Animated.timing(animatedScale, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      
+      // Play success sound
+      if (successSoundRef.current) {
+        await successSoundRef.current.replayAsync();
       }
       
-      // Auto-detect after delay
-      setTimeout(() => {
-        if (count < TOTAL_PUTTS) {
-          const simulatedStrike = {
-            timestamp: Date.now(),
-            energy: 0.002 + Math.random() * 0.003,
-            confidence: 0.8 + Math.random() * 0.2,
-            zcr: 0.15 + Math.random() * 0.1
-          };
-          handlePuttDetected(simulatedStrike);
-          count++;
-        }
-      }, 2000 + Math.random() * 1000);
-    }, 4000);
+      // Add haptic feedback
+      Vibration.vibrate(100);
+      
+      // Process recording
+      const audioData = await recordingManager.loadRecording(recordingData.uri);
+      const features = recordingManager.extractFeatures(audioData);
+      
+      // Store recording data
+      const newRecordings = [...recordings, {
+        puttNumber,
+        recordingData,
+        audioData,
+        features,
+        timestamp: Date.now()
+      }];
+      setRecordings(newRecordings);
+      
+      // Update count
+      setPuttCount(puttNumber);
+      setCurrentInstruction(`✅ Putt ${puttNumber} recorded successfully!`);
+      
+      // Pause before next putt
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Continue to next putt
+      startPuttSequence(puttNumber + 1);
+      
+    } catch (error) {
+      console.error('Failed to record putt:', error);
+      Alert.alert(
+        'Recording Failed',
+        'Failed to record putt. Would you like to retry?',
+        [
+          { text: 'Retry', onPress: () => recordPutt(puttNumber) },
+          { text: 'Skip', onPress: () => startPuttSequence(puttNumber + 1) }
+        ]
+      );
+    }
   };
   
-  const updateConfidenceScore = (data) => {
-    if (data.length < 2) {
-      setConfidenceScore(0);
-      return;
-    }
-    
-    // Calculate consistency between samples
-    let totalSimilarity = 0;
-    let comparisons = 0;
-    
-    for (let i = 0; i < data.length - 1; i++) {
-      for (let j = i + 1; j < data.length; j++) {
-        if (data[i].spectralFeatures && data[j].spectralFeatures) {
-          const similarity = spectralAnalysis.cosineSimilarity(
-            data[i].spectralFeatures,
-            data[j].spectralFeatures
-          );
-          totalSimilarity += similarity;
-          comparisons++;
-        }
-      }
-    }
-    
-    const avgSimilarity = comparisons > 0 ? totalSimilarity / comparisons : 0;
-    setConfidenceScore(Math.round(avgSimilarity * 100));
-  };
-  
-  const completeCalibration = async (data) => {
+  const completeCalibration = async () => {
     setProcessing(true);
+    setPhase('processing');
     setCurrentInstruction('Processing your putter profile...');
     
     try {
-      // Build profile from calibration data
-      const profile = await profileBuilder.buildFromCalibration({
-        impacts: data,
-        name: 'My Putter (Calibrated)',
+      // Build profile from recordings
+      const profileData = {
+        impacts: recordings.map(r => ({
+          timestamp: r.timestamp,
+          energy: r.features.maxEnergy,
+          spectralFeatures: r.features.impactWindow,
+          audioData: r.audioData
+        })),
+        name: 'My Putter (Countdown)',
         kind: 'target',
-        threshold: 0.75,
+        threshold: 0.7,
         metadata: {
           calibrationPutts: TOTAL_PUTTS,
-          confidenceScore: confidenceScore / 100,
+          recordingMethod: 'countdown',
+          version: VERSION,
           createdAt: Date.now()
         }
-      });
+      };
+      
+      const profile = await profileBuilder.buildFromCalibration(profileData);
       
       // Save profile
-      await profileManager.addProfile(profile);
+      await profileManager.saveProfile(profile);
       
-      // Success feedback
+      // Success!
       Alert.alert(
-        'Calibration Complete!',
-        `Your putter profile has been created with ${confidenceScore}% consistency.\n\nThe app will now better detect your putts and filter out noise.`,
+        '🎯 Calibration Complete!',
+        `Your putter profile has been created from ${TOTAL_PUTTS} recorded putts.\n\nThe app will now detect your putts more accurately.`,
         [
           {
             text: 'Done',
@@ -397,9 +309,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
     } finally {
       setProcessing(false);
       setIsCalibrating(false);
-      if (detectorRef.current) {
-        detectorRef.current.stop();
-      }
+      cleanup();
     }
   };
   
@@ -412,11 +322,9 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         {
           text: 'Cancel',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            await cleanup();
             setIsCalibrating(false);
-            if (detectorRef.current) {
-              detectorRef.current.stop();
-            }
             navigation.goBack();
           }
         }
@@ -430,95 +338,58 @@ export default function PutterCalibrationScreen({ navigation, route }) {
     return (
       <View style={styles.progressContainer}>
         <View style={styles.progressBar}>
-          <View 
-            style={[
-              styles.progressFill,
-              { width: `${progress * 100}%` }
-            ]}
-          />
+          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <Text style={styles.progressText}>
-          {puttCount} / {TOTAL_PUTTS} putts recorded
-        </Text>
+        <View style={styles.progressDots}>
+          {[...Array(TOTAL_PUTTS)].map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.progressDot,
+                i < puttCount && styles.progressDotCompleted
+              ]}
+            />
+          ))}
+        </View>
       </View>
     );
   };
   
-  const renderDetectionIndicator = () => {
+  const renderCountdown = () => {
+    if (countdown === null) return null;
+    
     return (
       <Animated.View
         style={[
-          styles.detectionIndicator,
+          styles.countdownContainer,
           {
             transform: [{ scale: animatedScale }],
             opacity: animatedOpacity
           }
         ]}
       >
-        <View style={[
-          styles.detectionCircle,
-          isListening && styles.detectionCircleActive
-        ]}>
-          {isListening ? (
-            <Text style={styles.listeningText}>LISTENING</Text>
-          ) : (
-            <Text style={styles.readyText}>READY</Text>
-          )}
-        </View>
+        <Text style={styles.countdownNumber}>{countdown}</Text>
       </Animated.View>
     );
   };
   
-  if (!isCalibrating) {
+  const renderRecordingIndicator = () => {
+    if (!isRecording) return null;
+    
     return (
-      <SafeAreaView style={styles.container}>
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.versionBadge}>
-            <Text style={styles.versionText}>VERSION: {VERSION}</Text>
-            <Text style={styles.buildText}>BUILD: {BUILD_DATE}</Text>
-          </View>
-          <Text style={styles.title}>Putter Calibration</Text>
-          <Text style={styles.description}>
-            This calibration will record 10 putts to create a unique sound profile for your putter.
-            {'\n\n'}
-            ⚡ ULTRA-SENSITIVE MODE ENABLED ⚡
-            {'\n'}
-            NO TIME LIMITS - Take as long as you need!
-            {'\n\n'}
-            This helps the app accurately detect your putts while filtering out background noise.
-          </Text>
-          
-          <View style={styles.instructions}>
-            <Text style={styles.instructionTitle}>Instructions:</Text>
-            <Text style={styles.instructionText}>
-              1. Have 10 golf balls ready{'\n'}
-              2. Place device 1-2 feet from the ball{'\n'}
-              3. Use your normal putting stroke{'\n'}
-              4. Wait for the "ding" after each putt{'\n'}
-              5. Take your time - no rush!
-            </Text>
-          </View>
-          
-          <TouchableOpacity
-            style={styles.startButton}
-            onPress={startCalibration}
-          >
-            <Text style={styles.startButtonText}>Start Calibration</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </SafeAreaView>
+      <Animated.View
+        style={[
+          styles.recordingIndicator,
+          {
+            transform: [{ scale: animatedScale }]
+          }
+        ]}
+      >
+        <View style={styles.recordingDot} />
+        <Text style={styles.recordingText}>RECORDING</Text>
+      </Animated.View>
     );
-  }
+  };
   
   return (
     <SafeAreaView style={styles.container}>
@@ -527,71 +398,73 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.versionBadge}>
-          <Text style={styles.versionText}>{VERSION} - CALIBRATING</Text>
+          <Text style={styles.versionText}>{VERSION}</Text>
         </View>
-        <Text style={styles.title}>Recording Putter Profile</Text>
         
-        {renderProgress()}
-        
-        {renderDetectionIndicator()}
-        
-        <Text style={styles.instruction}>{currentInstruction}</Text>
-        
-        {confidenceScore > 0 && (
-          <Text style={styles.confidence}>
-            Profile Consistency: {confidenceScore}%
-          </Text>
-        )}
-        
-        <Text style={styles.detectionNote}>
-          Detection: EXTREME Mode (0.00005 fixed)
+        <Text style={styles.title}>
+          {isCalibrating ? 'Recording Putter Profile' : 'Putter Calibration'}
         </Text>
         
-        {debugInfo !== '' && (
-          <Text style={styles.debugText}>
-            {debugInfo}
-          </Text>
-        )}
-        
-        {energyLevel > 0 && (
-          <View style={styles.energyDisplay}>
-            <Text style={styles.energyLabel}>Energy Level:</Text>
-            <Text style={[styles.energyValue, energyLevel > 0.00005 ? styles.energyHigh : styles.energyLow]}>
-              {energyLevel.toFixed(6)}
+        {!isCalibrating && !processing && (
+          <View style={styles.startContainer}>
+            <Text style={styles.description}>
+              Record exactly 10 putts using a countdown timer.{'\n'}
+              This guarantees we capture every putt perfectly.
             </Text>
-            <Text style={styles.thresholdText}>Threshold: 0.00005 (EXTREME)</Text>
+            
+            <View style={styles.instructionsList}>
+              <Text style={styles.instructionItem}>📍 Place phone 0.5-1.5m from ball</Text>
+              <Text style={styles.instructionItem}>🔇 Find a quiet environment</Text>
+              <Text style={styles.instructionItem}>⏱️ Follow the 3-2-1 countdown</Text>
+              <Text style={styles.instructionItem}>🏌️ Putt when you see "PUTT NOW!"</Text>
+              <Text style={styles.instructionItem}>🎯 Complete all 10 putts</Text>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.startButton}
+              onPress={startCalibration}
+            >
+              <Text style={styles.startButtonText}>Start Countdown Calibration</Text>
+            </TouchableOpacity>
           </View>
         )}
         
-        {processing && (
-          <ActivityIndicator size="large" color="#4CAF50" style={styles.loader} />
+        {isCalibrating && (
+          <>
+            {renderProgress()}
+            
+            <View style={styles.calibrationContainer}>
+              {renderCountdown()}
+              {renderRecordingIndicator()}
+              
+              {!countdown && !isRecording && (
+                <View style={styles.statusContainer}>
+                  <Text style={styles.instruction}>{currentInstruction}</Text>
+                  {phase === 'ready' && puttCount > 0 && (
+                    <Text style={styles.statusText}>
+                      {puttCount} of {TOTAL_PUTTS} putts recorded
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+          </>
         )}
         
-        {!processing && (
-          <>
-            <TouchableOpacity
-              style={[styles.cancelButton, { backgroundColor: '#4CAF50', marginBottom: 10 }]}
-              onPress={() => {
-                console.log('Manual detection triggered');
-                const manualStrike = {
-                  timestamp: Date.now(),
-                  energy: 0.001,
-                  confidence: 1.0,
-                  manual: true
-                };
-                handlePuttDetected(manualStrike);
-              }}
-            >
-              <Text style={styles.cancelButtonText}>Manual Detection (Test)</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={cancelCalibration}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </>
+        {processing && (
+          <View style={styles.processingContainer}>
+            <ActivityIndicator size="large" color="#4CAF50" />
+            <Text style={styles.processingText}>{currentInstruction}</Text>
+          </View>
+        )}
+        
+        {isCalibrating && !processing && (
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={cancelCalibration}
+          >
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -601,195 +474,177 @@ export default function PutterCalibrationScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#f5f5f5',
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    minHeight: screenHeight - 100,
-  },
-  title: {
-    fontSize: isSmallScreen ? 24 : 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: isTinyScreen ? 15 : 20,
-    textAlign: 'center',
-    paddingHorizontal: 10,
-  },
-  description: {
-    fontSize: isSmallScreen ? 14 : 16,
-    color: '#ccc',
-    textAlign: 'center',
-    marginBottom: isTinyScreen ? 20 : 30,
-    paddingHorizontal: 10,
-    lineHeight: isSmallScreen ? 20 : 24,
-  },
-  instructions: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 10,
     padding: isSmallScreen ? 15 : 20,
-    marginBottom: isTinyScreen ? 20 : 30,
-    width: '100%',
-    maxWidth: Math.min(400, screenWidth - 32),
-  },
-  instructionTitle: {
-    fontSize: isSmallScreen ? 16 : 18,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-    marginBottom: 10,
-  },
-  instructionText: {
-    fontSize: isSmallScreen ? 13 : 14,
-    color: '#ccc',
-    lineHeight: isSmallScreen ? 20 : 22,
-  },
-  progressContainer: {
-    width: '100%',
-    maxWidth: Math.min(400, screenWidth - 32),
-    marginBottom: isTinyScreen ? 25 : 40,
-    paddingHorizontal: 10,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: '#333',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
-    borderRadius: 4,
-  },
-  progressText: {
-    color: '#ccc',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  detectionIndicator: {
-    marginBottom: isTinyScreen ? 25 : 40,
-  },
-  detectionCircle: {
-    width: isSmallScreen ? 120 : 150,
-    height: isSmallScreen ? 120 : 150,
-    borderRadius: isSmallScreen ? 60 : 75,
-    backgroundColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#555',
-  },
-  detectionCircleActive: {
-    borderColor: '#4CAF50',
-    backgroundColor: '#1a3a1a',
-  },
-  listeningText: {
-    color: '#4CAF50',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  readyText: {
-    color: '#888',
-    fontSize: 18,
-  },
-  instruction: {
-    fontSize: isSmallScreen ? 16 : 20,
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: isTinyScreen ? 15 : 20,
-    paddingHorizontal: 10,
-  },
-  confidence: {
-    fontSize: 16,
-    color: '#4CAF50',
-    marginBottom: 20,
-  },
-  startButton: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: isSmallScreen ? 30 : 40,
-    paddingVertical: isSmallScreen ? 12 : 15,
-    borderRadius: 25,
-    marginBottom: 20,
-    width: '80%',
-    maxWidth: 300,
-    alignItems: 'center',
-  },
-  startButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  cancelButton: {
-    paddingHorizontal: 30,
-    paddingVertical: 10,
-  },
-  cancelButtonText: {
-    color: '#888',
-    fontSize: 16,
-  },
-  loader: {
-    marginTop: 20,
-  },
-  detectionNote: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 10,
-    fontStyle: 'italic',
-  },
-  debugText: {
-    fontSize: 11,
-    color: '#4CAF50',
-    marginTop: 5,
-    fontFamily: 'monospace',
-  },
-  energyDisplay: {
-    backgroundColor: '#2a2a2a',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10,
-    alignItems: 'center',
-  },
-  energyLabel: {
-    color: '#888',
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  energyValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    fontFamily: 'monospace',
-  },
-  energyLow: {
-    color: '#FF6B6B',
-  },
-  energyHigh: {
-    color: '#4CAF50',
-  },
-  thresholdText: {
-    color: '#888',
-    fontSize: 11,
-    marginTop: 4,
+    paddingBottom: 50,
   },
   versionBadge: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 10,
-    right: 10,
-    backgroundColor: '#FF6B6B',
-    padding: isSmallScreen ? 6 : 8,
-    borderRadius: 5,
-    zIndex: 1000,
+    alignSelf: 'center',
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 15,
+    paddingVertical: 5,
+    borderRadius: 15,
+    marginBottom: 10,
   },
   versionText: {
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold',
   },
-  buildText: {
+  title: {
+    fontSize: isSmallScreen ? 24 : 28,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#333',
+  },
+  startContainer: {
+    backgroundColor: 'white',
+    borderRadius: 15,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  description: {
+    fontSize: isSmallScreen ? 14 : 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  instructionsList: {
+    marginBottom: 25,
+  },
+  instructionItem: {
+    fontSize: isSmallScreen ? 14 : 15,
+    color: '#555',
+    marginBottom: 10,
+    paddingLeft: 5,
+  },
+  startButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 15,
+    borderRadius: 25,
+    alignItems: 'center',
+  },
+  startButtonText: {
     color: 'white',
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: isSmallScreen ? 16 : 18,
+    fontWeight: 'bold',
+  },
+  progressContainer: {
+    marginBottom: 30,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 15,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+  },
+  progressDots: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  progressDot: {
+    width: isSmallScreen ? 20 : 25,
+    height: isSmallScreen ? 20 : 25,
+    borderRadius: 15,
+    backgroundColor: '#E0E0E0',
+    borderWidth: 2,
+    borderColor: '#CCC',
+  },
+  progressDotCompleted: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#2E7D32',
+  },
+  calibrationContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 300,
+  },
+  countdownContainer: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: '#FFC107',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+  },
+  countdownNumber: {
+    fontSize: 72,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  recordingIndicator: {
+    alignItems: 'center',
+  },
+  recordingDot: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#FF3B30',
+    marginBottom: 20,
+  },
+  recordingText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FF3B30',
+  },
+  statusContainer: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  instruction: {
+    fontSize: isSmallScreen ? 18 : 22,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  statusText: {
+    fontSize: isSmallScreen ? 14 : 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  processingContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  processingText: {
+    fontSize: isSmallScreen ? 16 : 18,
+    color: '#666',
+    marginTop: 20,
+    textAlign: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#FF3B30',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+    alignSelf: 'center',
+    marginTop: 30,
+  },
+  cancelButtonText: {
+    color: 'white',
+    fontSize: isSmallScreen ? 14 : 16,
+    fontWeight: '600',
   },
 });

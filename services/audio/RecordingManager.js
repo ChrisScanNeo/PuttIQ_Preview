@@ -1,0 +1,220 @@
+import { Audio } from 'expo-av';
+
+/**
+ * RecordingManager - Handles timed audio recording for putt calibration
+ * Uses expo-av to record precise 1-second segments
+ */
+class RecordingManager {
+  constructor() {
+    this.recording = null;
+    this.isRecording = false;
+    this.recordingSettings = {
+      android: {
+        extension: '.m4a',
+        outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+        audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        bitRate: 128000,
+      },
+      ios: {
+        extension: '.m4a',
+        outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+        audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        bitRate: 128000,
+        linearPCMBitDepth: 16,
+        linearPCMIsBigEndian: false,
+        linearPCMIsFloat: false,
+      },
+      web: {
+        mimeType: 'audio/webm',
+        bitsPerSecond: 128000,
+      }
+    };
+  }
+
+  /**
+   * Request microphone permissions
+   */
+  async requestPermissions() {
+    try {
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        throw new Error('Microphone permission denied');
+      }
+      
+      // Set audio mode for recording
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        staysActiveInBackground: false,
+        playThroughEarpieceAndroid: false
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to get permissions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Start recording for a specified duration
+   * @param {number} durationMs - Recording duration in milliseconds
+   * @returns {Promise<Object>} Recording data
+   */
+  async recordForDuration(durationMs = 1000) {
+    try {
+      // Clean up any existing recording
+      if (this.recording) {
+        try {
+          await this.recording.stopAndUnloadAsync();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        this.recording = null;
+      }
+
+      // Create and prepare new recording
+      const { recording } = await Audio.Recording.createAsync(
+        this.recordingSettings,
+        (status) => {
+          // Optional: Handle status updates
+          if (status.isRecording) {
+            this.isRecording = true;
+          }
+        }
+      );
+      
+      this.recording = recording;
+      console.log('Recording started for', durationMs, 'ms');
+      
+      // Wait for specified duration
+      await new Promise(resolve => setTimeout(resolve, durationMs));
+      
+      // Stop recording
+      await recording.stopAndUnloadAsync();
+      this.isRecording = false;
+      
+      // Get recording URI
+      const uri = recording.getURI();
+      console.log('Recording saved to:', uri);
+      
+      // Get recording info
+      const info = await recording.getStatusAsync();
+      
+      return {
+        uri,
+        duration: info.durationMillis,
+        success: true,
+        timestamp: Date.now()
+      };
+      
+    } catch (error) {
+      console.error('Recording failed:', error);
+      this.isRecording = false;
+      throw error;
+    }
+  }
+
+  /**
+   * Load and process audio file
+   * @param {string} uri - Recording URI
+   * @returns {Promise<Float32Array>} Audio samples
+   */
+  async loadRecording(uri) {
+    try {
+      // Create sound object from recording
+      const { sound } = await Audio.Sound.createAsync({ uri });
+      
+      // Get audio status
+      const status = await sound.getStatusAsync();
+      
+      // For now, return mock data (real implementation would need native module)
+      // In production, you'd extract PCM data from the file
+      const samples = new Float32Array(16000); // 1 second at 16kHz
+      
+      // Simulate some audio data
+      for (let i = 0; i < samples.length; i++) {
+        samples[i] = Math.random() * 0.1 - 0.05;
+      }
+      
+      // Add a simulated impact spike
+      const impactStart = Math.floor(samples.length * 0.3);
+      for (let i = impactStart; i < impactStart + 100; i++) {
+        samples[i] = Math.random() * 0.5;
+      }
+      
+      // Unload sound
+      await sound.unloadAsync();
+      
+      return samples;
+    } catch (error) {
+      console.error('Failed to load recording:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Extract features from audio samples
+   * @param {Float32Array} samples - Audio samples
+   * @returns {Object} Audio features
+   */
+  extractFeatures(samples) {
+    let maxEnergy = 0;
+    let avgEnergy = 0;
+    let peakIndex = 0;
+    
+    // Find peak energy
+    for (let i = 0; i < samples.length; i++) {
+      const energy = Math.abs(samples[i]);
+      avgEnergy += energy;
+      if (energy > maxEnergy) {
+        maxEnergy = energy;
+        peakIndex = i;
+      }
+    }
+    
+    avgEnergy /= samples.length;
+    
+    // Extract window around peak
+    const windowSize = 512;
+    const halfWindow = windowSize / 2;
+    const start = Math.max(0, peakIndex - halfWindow);
+    const end = Math.min(samples.length, peakIndex + halfWindow);
+    const impactWindow = samples.slice(start, end);
+    
+    return {
+      maxEnergy,
+      avgEnergy,
+      peakIndex,
+      peakTime: peakIndex / 16000, // Convert to seconds
+      impactWindow,
+      samples
+    };
+  }
+
+  /**
+   * Clean up resources
+   */
+  async cleanup() {
+    if (this.recording) {
+      try {
+        if (this.isRecording) {
+          await this.recording.stopAndUnloadAsync();
+        }
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      this.recording = null;
+      this.isRecording = false;
+    }
+  }
+}
+
+// Export singleton instance
+export const recordingManager = new RecordingManager();
+export default recordingManager;

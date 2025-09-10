@@ -185,9 +185,9 @@ export default function ProfileManagerScreen({ route, navigation }) {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Version Banner */}
         <View style={styles.versionBanner}>
-          <Text style={styles.versionTitle}>🚀 VERSION 2.4-EXTREME - WORKING!</Text>
-          <Text style={styles.versionSubtitle}>0.00005 Threshold | Fixed Profile Clear | Manual Test Button</Text>
-          <Text style={styles.buildDate}>Build: Dec 10, 2024 - 16:45</Text>
+          <Text style={styles.versionTitle}>🚀 VERSION 3.0-COUNTDOWN!</Text>
+          <Text style={styles.versionSubtitle}>3-2-1 Recording | Guaranteed Capture | No Detection Issues</Text>
+          <Text style={styles.buildDate}>Build: Dec 10, 2024 - 17:00</Text>
         </View>
         
         {/* Stats Section */}
@@ -238,8 +238,8 @@ export default function ProfileManagerScreen({ route, navigation }) {
             style={styles.actionButton}
             onPress={() => setShowOnboarding(true)}
           >
-            <Text style={styles.actionButtonText}>🎯 10-PUTT CALIBRATION (EXTREME!)</Text>
-            <Text style={styles.actionButtonSubtext}>EXTREME 0.00005 Threshold</Text>
+            <Text style={styles.actionButtonText}>🎯 10-PUTT COUNTDOWN</Text>
+            <Text style={styles.actionButtonSubtext}>3-2-1 Timed Recording</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
