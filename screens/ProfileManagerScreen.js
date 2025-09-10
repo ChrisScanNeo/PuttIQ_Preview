@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { profileManager } from '../services/profiles/ProfileManager';
 import { getDeviceId } from '../services/auth';
-import PutterOnboardingScreen from './PutterOnboardingScreen';
+import PutterCalibrationScreen from './PutterCalibrationScreen';
 
 export default function ProfileManagerScreen({ route, navigation }) {
   const [profiles, setProfiles] = useState([]);
@@ -185,9 +185,9 @@ export default function ProfileManagerScreen({ route, navigation }) {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Version Banner */}
         <View style={styles.versionBanner}>
-          <Text style={styles.versionTitle}>🚀 VERSION 2.1-ULTRA</Text>
-          <Text style={styles.versionSubtitle}>Ultra-Sensitive Detection | No Time Limits</Text>
-          <Text style={styles.buildDate}>Build: Dec 10, 2024 - 15:00</Text>
+          <Text style={styles.versionTitle}>🚀 VERSION 2.1-ULTRA - FIXED!</Text>
+          <Text style={styles.versionSubtitle}>Now Using 10-Putt Calibration | Ultra-Sensitive</Text>
+          <Text style={styles.buildDate}>Build: Dec 10, 2024 - 15:30</Text>
         </View>
         
         {/* Stats Section */}
@@ -238,7 +238,8 @@ export default function ProfileManagerScreen({ route, navigation }) {
             style={styles.actionButton}
             onPress={() => setShowOnboarding(true)}
           >
-            <Text style={styles.actionButtonText}>🎯 Record Putter</Text>
+            <Text style={styles.actionButtonText}>🎯 10-PUTT CALIBRATION (NEW!)</Text>
+            <Text style={styles.actionButtonSubtext}>Ultra-Sensitive Mode v2.1</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -305,15 +306,15 @@ export default function ProfileManagerScreen({ route, navigation }) {
         </View>
       </ScrollView>
 
-      {/* Onboarding Modal */}
+      {/* Calibration Modal - NEW 10-PUTT ULTRA MODE */}
       <Modal
         visible={showOnboarding}
         animationType="slide"
         presentationStyle="fullScreen"
       >
-        <PutterOnboardingScreen
-          onComplete={handleOnboardingComplete}
-          onCancel={() => setShowOnboarding(false)}
+        <PutterCalibrationScreen
+          navigation={{ goBack: () => setShowOnboarding(false) }}
+          route={{ params: { onComplete: handleOnboardingComplete } }}
         />
       </Modal>
     </SafeAreaView>
@@ -450,6 +451,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: '600',
+  },
+  actionButtonSubtext: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 11,
+    marginTop: 2,
+    fontStyle: 'italic',
   },
   profilesSection: {
     paddingHorizontal: 15,

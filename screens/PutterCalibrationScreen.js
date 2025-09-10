@@ -20,8 +20,9 @@ import { spectralAnalysis } from '../services/dsp/SpectralAnalysis';
 const { width: screenWidth } = Dimensions.get('window');
 
 export default function PutterCalibrationScreen({ navigation, route }) {
-  console.log('🚀 PutterCalibrationScreen v2.1-ULTRA loaded! Build: 2024-12-10 15:00');
-  console.log('⚡ Ultra-sensitive detection enabled with NO time limits');
+  console.log('🚀 PutterCalibrationScreen v2.2-INSANE loaded! Build: 2024-12-10 15:30');
+  console.log('⚡ INSANELY sensitive detection (0.1 threshold) with NO time limits');
+  console.log('🎯 NOW ACTUALLY BEING USED from ProfileManager!');
   
   const { onComplete } = route.params || {};
   
@@ -46,8 +47,8 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   
   // Constants
   const TOTAL_PUTTS = 10;
-  const VERSION = 'v2.1-ULTRA'; // Version indicator
-  const BUILD_DATE = '2024-12-10 15:00'; // Build timestamp
+  const VERSION = 'v2.2-INSANE'; // Version indicator - FIXED!
+  const BUILD_DATE = '2024-12-10 15:30'; // Build timestamp
   const PRE_IMPACT_SAMPLES = 512;  // Capture before impact
   const POST_IMPACT_SAMPLES = 512; // Capture after impact
   
@@ -110,14 +111,14 @@ export default function PutterCalibrationScreen({ navigation, route }) {
       setDebugInfo('Initializing detector...');
       
       try {
-        // Initialize detector with EXTREMELY sensitive settings
+        // Initialize detector with INSANELY sensitive settings for putts
         const detector = await DetectorFactory.createDetector({
           sampleRate: 16000,
           frameLength: 256,
-          energyThresh: 0.3,     // ULTRA sensitive for calibration
-          zcrThresh: 0.05,       // Very low threshold
-          refractoryMs: 1000,    // 1 second to avoid ball bounce detection
-          calibrationMode: true, // Enable special calibration mode
+          energyThresh: 0.1,     // INSANELY sensitive - will detect even soft putts
+          zcrThresh: 0.03,       // Extremely low threshold
+          refractoryMs: 1200,    // 1.2 seconds to avoid ball bounce detection
+          calibrationMode: true, // Enable special calibration mode (only energy check)
           tickGuardMs: 0,        // Disable metronome guard
           getUpcomingTicks: () => [], // No metronome ticks to check
           bufferSize: PRE_IMPACT_SAMPLES + POST_IMPACT_SAMPLES,
@@ -130,8 +131,8 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         
         // Warm-up period to let baseline stabilize
         setIsWarmingUp(true);
-        setCurrentInstruction('🔥 WARMING UP ULTRA-SENSITIVE DETECTOR (2 seconds)...');
-        setDebugInfo(`Detector initialized with energyThresh: 0.3`);
+        setCurrentInstruction('🔥 WARMING UP INSANELY-SENSITIVE DETECTOR (2 seconds)...');
+        setDebugInfo(`Detector initialized with energyThresh: 0.1 (INSANE MODE)`);
         setTimeout(() => {
           setIsWarmingUp(false);
           setDebugInfo('✅ Ready for detection - NO TIME LIMIT!');
@@ -512,7 +513,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         )}
         
         <Text style={styles.detectionNote}>
-          Detection: Ultra Sensitive Mode
+          Detection: INSANE Mode (0.1 threshold)
         </Text>
         
         {debugInfo !== '' && (
