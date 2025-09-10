@@ -60,21 +60,22 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   
   const loadSounds = async () => {
     try {
-      // Load countdown beep sound
+      // Load countdown beep sound - fix path
       const { sound: countdownSound } = await Audio.Sound.createAsync(
-        require('../../assets/sound/metronome-85688.mp3'),
+        require('../assets/sound/metronome-85688.mp3'),
         { shouldPlay: false, volume: 0.5 }
       );
       countdownSoundRef.current = countdownSound;
       
       // Load success sound (use same for now)
       const { sound: successSound } = await Audio.Sound.createAsync(
-        require('../../assets/sound/metronome-85688.mp3'),
+        require('../assets/sound/metronome-85688.mp3'),
         { shouldPlay: false, volume: 0.7 }
       );
       successSoundRef.current = successSound;
     } catch (error) {
-      console.log('Could not load sounds:', error);
+      console.log('Could not load sounds (continuing without audio):', error);
+      // Continue without sounds - not critical
     }
   };
   
@@ -140,9 +141,13 @@ export default function PutterCalibrationScreen({ navigation, route }) {
       setCountdown(i);
       setCurrentInstruction(`Ready in ${i}...`);
       
-      // Play beep sound
+      // Play beep sound (optional)
       if (countdownSoundRef.current) {
-        await countdownSoundRef.current.replayAsync();
+        try {
+          await countdownSoundRef.current.replayAsync();
+        } catch (e) {
+          // Sound playback failed, continue without it
+        }
       }
       
       // Animate countdown number
@@ -213,9 +218,13 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         useNativeDriver: true,
       }).start();
       
-      // Play success sound
+      // Play success sound (optional)
       if (successSoundRef.current) {
-        await successSoundRef.current.replayAsync();
+        try {
+          await successSoundRef.current.replayAsync();
+        } catch (e) {
+          // Sound playback failed, continue without it
+        }
       }
       
       // Add haptic feedback
