@@ -99,6 +99,19 @@ export default function SettingsScreen({ route, navigation }) {
     );
   };
 
+  const startCalibration = () => {
+    navigation.navigate('PutterCalibration', {
+      onComplete: (profile) => {
+        console.log('Calibration completed:', profile);
+        Alert.alert(
+          'Success',
+          'Your putter has been calibrated successfully! The app will now better detect your putts.',
+          [{ text: 'OK' }]
+        );
+      }
+    });
+  };
+
   const resetToDefaults = () => {
     Alert.alert(
       'Reset Settings',
@@ -227,6 +240,22 @@ export default function SettingsScreen({ route, navigation }) {
               trackColor={{ false: '#ccc', true: '#4CAF50' }}
             />
           </View>
+        </View>
+
+        {/* Putter Calibration */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Putter Calibration</Text>
+          
+          <Text style={styles.calibrationDescription}>
+            Record 10 putts to create a personalized sound profile for better detection accuracy
+          </Text>
+          
+          <TouchableOpacity
+            style={[styles.button, styles.calibrationButton]}
+            onPress={startCalibration}
+          >
+            <Text style={styles.calibrationButtonText}>🎯 Calibrate Putter (10 Putts)</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Data Management */}
@@ -394,10 +423,24 @@ const styles = StyleSheet.create({
   secondaryButton: {
     backgroundColor: '#FF9800',
   },
+  calibrationButton: {
+    backgroundColor: '#4CAF50',
+  },
   buttonText: {
     color: 'white',
     fontSize: 14,
     fontWeight: '600',
+  },
+  calibrationButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  calibrationDescription: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 15,
+    lineHeight: 18,
   },
   infoRow: {
     flexDirection: 'row',

@@ -5,19 +5,51 @@ import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-na
 import HomeScreen from '../screens/HomeScreen';
 import ProfileManagerScreen from '../screens/ProfileManagerScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import PutterCalibrationScreen from '../screens/PutterCalibrationScreen';
 
 // Simple tab navigator without external dependencies
 export default function SimpleNavigator({ user }) {
   const [activeTab, setActiveTab] = useState('Home');
+  const [activeScreen, setActiveScreen] = useState('Home');
+  const [screenParams, setScreenParams] = useState({});
+
+  // Navigation function for screens to use
+  const navigation = {
+    navigate: (screenName, params = {}) => {
+      setActiveScreen(screenName);
+      setScreenParams(params);
+    },
+    goBack: () => {
+      setActiveScreen(activeTab);
+      setScreenParams({});
+    }
+  };
 
   const renderScreen = () => {
+    // Check if we're showing a modal/sub-screen
+    if (activeScreen !== activeTab) {
+      switch (activeScreen) {
+        case 'PutterCalibration':
+          return <PutterCalibrationScreen 
+            navigation={navigation} 
+            route={{ params: screenParams }} 
+          />;
+        default:
+          break;
+      }
+    }
+
+    // Show tab screens
     switch (activeTab) {
       case 'Home':
         return <HomeScreen user={user} />;
       case 'Profiles':
         return <ProfileManagerScreen route={{ params: { user } }} />;
       case 'Settings':
-        return <SettingsScreen route={{ params: { user } }} />;
+        return <SettingsScreen 
+          route={{ params: { user } }} 
+          navigation={navigation}
+        />;
       default:
         return <HomeScreen user={user} />;
     }
@@ -26,7 +58,10 @@ export default function SimpleNavigator({ user }) {
   const TabButton = ({ name, label, icon }) => (
     <TouchableOpacity
       style={[styles.tabButton, activeTab === name && styles.activeTab]}
-      onPress={() => setActiveTab(name)}
+      onPress={() => {
+        setActiveTab(name);
+        setActiveScreen(name);
+      }}
     >
       <Text style={[styles.tabIcon, activeTab === name && styles.activeTabText]}>
         {icon}

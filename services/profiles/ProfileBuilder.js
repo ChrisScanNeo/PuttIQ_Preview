@@ -192,6 +192,190 @@ class ProfileBuilder {
   }
 
   /**
+   * Build a profile from discrete calibration impacts
+   * @param {Object} calibrationData - Calibration data with individual impacts
+   * @returns {Object} Profile result
+   */
+  async buildFromCalibration(calibrationData) {
+    const { impacts, name, kind = 'target', threshold = 0.75, metadata = {} } = calibrationData;
+    
+    console.log(`Building calibrated profile from ${impacts.length} discrete impacts`);
+    
+    // Validate we have enough impacts
+    if (impacts.length < 5) {
+      return {
+        success: false,
+        error: 'Need at least 5 impacts for calibration',
+        impactCount: impacts.length
+      };
+    }
+    
+    // Extract spectral features from each impact
+    const validSpectra = [];
+    const impactMetrics = [];
+    
+    for (const impact of impacts) {
+      if (impact.spectralFeatures) {
+        validSpectra.push(impact.spectralFeatures);
+        impactMetrics.push({
+          energy: impact.energy,
+          confidence: impact.confidence
+        });
+      } else if (impact.frames && impact.frames.length > 0) {
+        // Compute spectrum from frames if not already done
+        try {
+          const concatenated = this.concatenateFrames(impact.frames);
+          const spectrum = spectralAnalysis.computeSpectrum(concatenated);
+          if (spectrum) {
+            validSpectra.push(spectrum);
+            impactMetrics.push({
+              energy: impact.energy,
+              confidence: impact.confidence || 0.8
+            });
+          }
+        } catch (error) {
+          console.error('Failed to compute spectrum for impact:', error);
+        }
+      }
+    }
+    
+    if (validSpectra.length < 5) {
+      return {
+        success: false,
+        error: 'Could not extract enough valid spectral data',
+        validCount: validSpectra.length
+      };
+    }
+    
+    // Create robust template by averaging spectra
+    const template = spectralAnalysis.averageSpectra(validSpectra);
+    
+    if (!template) {
+      return {
+        success: false,
+        error: 'Failed to create spectral template'
+      };
+    }
+    
+    // Calculate quality metrics
+    const quality = this.assessCalibrationQuality(validSpectra, impactMetrics);
+    
+    // Create enhanced profile
+    const profile = {
+      id: `calibrated_${Date.now()}`,
+      name,
+      kind,
+      template,
+      threshold,
+      enabled: true,
+      sampleRate: this.sampleRate,
+      frameSize: this.frameSize,
+      isCalibrated: true,
+      metadata: {
+        ...metadata,
+        calibrationImpacts: impacts.length,
+        validSpectra: validSpectra.length,
+        quality,
+        createdAt: Date.now(),
+        averageEnergy: impactMetrics.reduce((sum, m) => sum + m.energy, 0) / impactMetrics.length,
+        energyRange: {
+          min: Math.min(...impactMetrics.map(m => m.energy)),
+          max: Math.max(...impactMetrics.map(m => m.energy))
+        }
+      }
+    };
+    
+    return {
+      success: true,
+      profile,
+      stats: {
+        impactsUsed: impacts.length,
+        validSpectra: validSpectra.length,
+        quality,
+        consistency: quality.consistency
+      }
+    };
+  }
+
+  /**
+   * Concatenate multiple frames into a single buffer
+   * @param {Array} frames - Array of audio frames
+   * @returns {Float32Array} Concatenated buffer
+   */
+  concatenateFrames(frames) {
+    const totalLength = frames.reduce((sum, frame) => sum + frame.length, 0);
+    const concatenated = new Float32Array(totalLength);
+    
+    let offset = 0;
+    for (const frame of frames) {
+      if (frame instanceof Int16Array) {
+        // Convert to float
+        for (let i = 0; i < frame.length; i++) {
+          concatenated[offset + i] = frame[i] / 32768.0;
+        }
+      } else {
+        concatenated.set(frame, offset);
+      }
+      offset += frame.length;
+    }
+    
+    return concatenated;
+  }
+
+  /**
+   * Assess quality of calibration data
+   * @param {Array<Float32Array>} spectra - Spectral templates from impacts
+   * @param {Array} metrics - Impact metrics
+   * @returns {Object} Quality assessment
+   */
+  assessCalibrationQuality(spectra, metrics) {
+    // Calculate spectral consistency
+    const avgSpectrum = spectralAnalysis.averageSpectra(spectra);
+    const similarities = spectra.map(spectrum => 
+      spectralAnalysis.cosineSimilarity(spectrum, avgSpectrum)
+    );
+    
+    const meanSimilarity = similarities.reduce((a, b) => a + b, 0) / similarities.length;
+    const minSimilarity = Math.min(...similarities);
+    const maxSimilarity = Math.max(...similarities);
+    
+    // Calculate energy consistency
+    const energies = metrics.map(m => m.energy);
+    const meanEnergy = energies.reduce((a, b) => a + b, 0) / energies.length;
+    const energyStdDev = Math.sqrt(
+      energies.reduce((sum, e) => sum + Math.pow(e - meanEnergy, 2), 0) / energies.length
+    );
+    const energyCV = energyStdDev / meanEnergy; // Coefficient of variation
+    
+    // Overall quality score
+    const spectralScore = meanSimilarity;
+    const energyScore = 1 - Math.min(1, energyCV); // Lower CV is better
+    const overallScore = (spectralScore * 0.7 + energyScore * 0.3);
+    
+    // Determine confidence level
+    let confidence;
+    if (overallScore > 0.85 && spectra.length >= 8) {
+      confidence = 'high';
+    } else if (overallScore > 0.75 && spectra.length >= 6) {
+      confidence = 'medium';
+    } else {
+      confidence = 'low';
+    }
+    
+    return {
+      score: Math.round(overallScore * 100) / 100,
+      consistency: Math.round(meanSimilarity * 100) / 100,
+      spectralRange: {
+        min: Math.round(minSimilarity * 100) / 100,
+        max: Math.round(maxSimilarity * 100) / 100
+      },
+      energyConsistency: Math.round(energyScore * 100) / 100,
+      sampleCount: spectra.length,
+      confidence
+    };
+  }
+
+  /**
    * Split continuous audio buffer into frames
    * @param {Int16Array|Float32Array} buffer - Continuous audio buffer
    * @returns {Array<Int16Array>} Array of frame buffers
