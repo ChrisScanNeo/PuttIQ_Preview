@@ -51,6 +51,7 @@ try {
  * @property {boolean} useListeningZone - Enable listening zone feature (default false)
  * @property {number} listeningZonePercent - Percentage of beat to listen (default 0.4)
  * @property {number} listeningZoneOffset - Start offset into beat (default 0.3)
+ * @property {number} audioGain - Audio input gain/amplification (default 50.0)
  */
 
 /**
@@ -74,6 +75,7 @@ export class PutterDetectorExpo {
       useListeningZone: false, // Disabled by default for backwards compatibility
       listeningZonePercent: 0.4, // 40% of beat period
       listeningZoneOffset: 0.3,  // Start at 30% into beat
+      audioGain: 50.0,  // Default audio gain/amplification
       ...options
     };
 
@@ -306,8 +308,9 @@ export class PutterDetectorExpo {
 
     // Convert Int16 to normalized float and apply band-pass filter
     const filtered = new Float32Array(frame.length);
+    const audioGain = this.opts.audioGain; // Use configurable gain
     for (let i = 0; i < frame.length; i++) {
-      const normalized = frame[i] / 32768.0; // Int16 to [-1, 1]
+      const normalized = (frame[i] / 32768.0) * audioGain; // Int16 to [-1, 1] with gain
       filtered[i] = this.bandpassFilter.process(normalized);
     }
     
@@ -355,8 +358,8 @@ export class PutterDetectorExpo {
       // Use fixed threshold in calibration mode for consistency
       threshold = this.opts.fixedThreshold;
     } else {
-      // Normal dynamic threshold
-      threshold = Math.max(0.0015, this.baseline * this.opts.energyThresh);
+      // Normal dynamic threshold - much lower minimum for quiet inputs
+      threshold = Math.max(0.00001, this.baseline * this.opts.energyThresh);
     }
 
     // Profile-based detection (if enabled)

@@ -92,6 +92,7 @@ export function usePuttIQDetector(defaultBpm = 40) {
             useProfiles: true,     // Explicitly enable profile-based detection
             debugMode: debugMode,  // Enable debug logging
             calibrationMode: debugMode, // Use calibration mode when debugging
+            audioGain: 50,         // Default audio gain for amplification
             
             // Listening zone configuration - only detect in middle portion of beat
             useListeningZone: true,      // Enable listening zone feature
@@ -375,12 +376,16 @@ export function usePuttIQDetector(defaultBpm = 40) {
     // Map sensitivity (0-1) to energy threshold (8-2) - MORE SENSITIVE RANGE
     const energyThresh = 8 - (sensitivity * 6);
     
+    // Map sensitivity to audio gain (10-100x amplification)
+    const audioGain = 10 + (sensitivity * 90);
+    
     detectorRef.current.updateParams({
       energyThresh,
-      zcrThresh: 0.12 + (sensitivity * 0.13) // 0.12-0.25 range (lower floor)
+      zcrThresh: 0.12 + (sensitivity * 0.13), // 0.12-0.25 range (lower floor)
+      audioGain
     });
 
-    console.log('Updated sensitivity:', { sensitivity, energyThresh });
+    console.log('Updated sensitivity:', { sensitivity, energyThresh, audioGain });
   }, []);
 
   /**

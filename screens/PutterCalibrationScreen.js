@@ -293,7 +293,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         })),
         name: 'My Putter (Countdown)',
         kind: 'target',
-        threshold: 0.5,  // Lower threshold for easier detection
+        threshold: 0.85,  // Higher threshold to prevent false matches
         metadata: {
           calibrationPutts: recordingsRef.current.length,
           recordingMethod: 'countdown',
