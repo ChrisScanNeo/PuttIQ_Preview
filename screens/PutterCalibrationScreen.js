@@ -9,7 +9,9 @@ import {
   Animated,
   Dimensions,
   ActivityIndicator,
-  Vibration
+  Vibration,
+  ScrollView,
+  Platform
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { DetectorFactory } from '../services/dsp/DetectorFactory';
@@ -17,7 +19,9 @@ import { profileBuilder } from '../services/profiles/ProfileBuilder';
 import { profileManager } from '../services/profiles/ProfileManager';
 import { spectralAnalysis } from '../services/dsp/SpectralAnalysis';
 
-const { width: screenWidth } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const isSmallScreen = screenWidth < 375;
+const isTinyScreen = screenHeight < 600;
 
 export default function PutterCalibrationScreen({ navigation, route }) {
   console.log('🚀 PutterCalibrationScreen v2.2-INSANE loaded! Build: 2024-12-10 15:30');
@@ -447,7 +451,10 @@ export default function PutterCalibrationScreen({ navigation, route }) {
   if (!isCalibrating) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.versionBadge}>
             <Text style={styles.versionText}>VERSION: {VERSION}</Text>
             <Text style={styles.buildText}>BUILD: {BUILD_DATE}</Text>
@@ -487,14 +494,17 @@ export default function PutterCalibrationScreen({ navigation, route }) {
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
   
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.versionBadge}>
           <Text style={styles.versionText}>{VERSION} - CALIBRATING</Text>
         </View>
@@ -534,7 +544,7 @@ export default function PutterCalibrationScreen({ navigation, route }) {
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
         )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -544,49 +554,54 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a1a',
   },
-  content: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    minHeight: screenHeight - 100,
   },
   title: {
-    fontSize: 28,
+    fontSize: isSmallScreen ? 24 : 28,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 20,
+    marginBottom: isTinyScreen ? 15 : 20,
     textAlign: 'center',
+    paddingHorizontal: 10,
   },
   description: {
-    fontSize: 16,
+    fontSize: isSmallScreen ? 14 : 16,
     color: '#ccc',
     textAlign: 'center',
-    marginBottom: 30,
-    paddingHorizontal: 20,
+    marginBottom: isTinyScreen ? 20 : 30,
+    paddingHorizontal: 10,
+    lineHeight: isSmallScreen ? 20 : 24,
   },
   instructions: {
     backgroundColor: '#2a2a2a',
     borderRadius: 10,
-    padding: 20,
-    marginBottom: 30,
+    padding: isSmallScreen ? 15 : 20,
+    marginBottom: isTinyScreen ? 20 : 30,
     width: '100%',
-    maxWidth: 400,
+    maxWidth: Math.min(400, screenWidth - 32),
   },
   instructionTitle: {
-    fontSize: 18,
+    fontSize: isSmallScreen ? 16 : 18,
     fontWeight: 'bold',
     color: '#4CAF50',
     marginBottom: 10,
   },
   instructionText: {
-    fontSize: 14,
+    fontSize: isSmallScreen ? 13 : 14,
     color: '#ccc',
-    lineHeight: 22,
+    lineHeight: isSmallScreen ? 20 : 22,
   },
   progressContainer: {
     width: '100%',
-    maxWidth: 400,
-    marginBottom: 40,
+    maxWidth: Math.min(400, screenWidth - 32),
+    marginBottom: isTinyScreen ? 25 : 40,
+    paddingHorizontal: 10,
   },
   progressBar: {
     height: 8,
@@ -606,12 +621,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   detectionIndicator: {
-    marginBottom: 40,
+    marginBottom: isTinyScreen ? 25 : 40,
   },
   detectionCircle: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: isSmallScreen ? 120 : 150,
+    height: isSmallScreen ? 120 : 150,
+    borderRadius: isSmallScreen ? 60 : 75,
     backgroundColor: '#333',
     justifyContent: 'center',
     alignItems: 'center',
@@ -632,10 +647,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   instruction: {
-    fontSize: 20,
+    fontSize: isSmallScreen ? 16 : 20,
     color: '#fff',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: isTinyScreen ? 15 : 20,
+    paddingHorizontal: 10,
   },
   confidence: {
     fontSize: 16,
@@ -644,10 +660,13 @@ const styles = StyleSheet.create({
   },
   startButton: {
     backgroundColor: '#4CAF50',
-    paddingHorizontal: 40,
-    paddingVertical: 15,
+    paddingHorizontal: isSmallScreen ? 30 : 40,
+    paddingVertical: isSmallScreen ? 12 : 15,
     borderRadius: 25,
     marginBottom: 20,
+    width: '80%',
+    maxWidth: 300,
+    alignItems: 'center',
   },
   startButtonText: {
     color: '#fff',
@@ -679,10 +698,10 @@ const styles = StyleSheet.create({
   },
   versionBadge: {
     position: 'absolute',
-    top: 10,
+    top: Platform.OS === 'ios' ? 50 : 10,
     right: 10,
     backgroundColor: '#FF6B6B',
-    padding: 8,
+    padding: isSmallScreen ? 6 : 8,
     borderRadius: 5,
     zIndex: 1000,
   },
