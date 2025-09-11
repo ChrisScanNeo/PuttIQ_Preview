@@ -73,6 +73,15 @@ class ProfileManager {
         profile.template = spectralAnalysis.base64ToFloat32(profile.template);
       }
       
+      // Fix thresholds for existing profiles that have old values
+      if (profile.kind === 'target' && profile.threshold < 0.88) {
+        console.log(`Updating target profile "${profile.name}" threshold from ${profile.threshold} to 0.90`);
+        profile.threshold = 0.90; // Standard threshold for putter
+      } else if (profile.kind === 'ignore' && profile.threshold < 0.97) {
+        console.log(`Updating ignore profile "${profile.name}" threshold from ${profile.threshold} to 0.97`);
+        profile.threshold = 0.97; // Ultra-strict for metronome
+      }
+      
       // Store in map
       this.profiles.set(profile.id, profile);
       

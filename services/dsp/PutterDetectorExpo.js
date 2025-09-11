@@ -395,7 +395,12 @@ export class PutterDetectorExpo {
             console.log(`   Energy was: ${features.energy.toFixed(6)}, would have triggered: ${features.energy > threshold}`);
             return; // Skip this frame completely
           } else if (profileMatch.type === 'target') {
-            // Sound matches target profile (putter) - detect it!
+            // Sound matches target profile (putter) - but check minimum energy
+            const MIN_PUTTER_ENERGY = 0.01; // Minimum energy for real putter impact
+            if (features.energy < MIN_PUTTER_ENERGY) {
+              console.log(`⚠️ PROFILE MATCH but energy too low: ${profileMatch.profile} (energy: ${features.energy.toFixed(6)} < ${MIN_PUTTER_ENERGY})`);
+              return; // Too weak to be a real putt
+            }
             isHit = true;
             console.log(`✅ PROFILE MATCH: ${profileMatch.profile} (similarity: ${(profileMatch.similarity * 100).toFixed(1)}%)`);
           } else if (profileMatch.type === 'no_match') {
