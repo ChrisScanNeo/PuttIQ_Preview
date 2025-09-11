@@ -10,7 +10,7 @@ import { DetectorFactory } from '../services/dsp/DetectorFactory';
  * @param {number} defaultBpm - Default BPM setting
  * @returns {Object} Hook state and methods
  */
-export function usePuttIQDetector(defaultBpm = 40) {
+export function usePuttIQDetector(defaultBpm = 30) {
   // State management
   const [isInitialized, setInitialized] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
@@ -86,13 +86,13 @@ export function usePuttIQDetector(defaultBpm = 40) {
             sampleRate: 16000,
             frameLength: 256,
             refractoryMs: 100,     // Very fast response for putts
-            energyThresh: 2,       // EXTREMELY SENSITIVE for profile capture
+            energyThresh: 3,       // Reduced sensitivity by 30% for fewer false positives
             zcrThresh: 0.10,       // Very low threshold for putter detection
             tickGuardMs: 50,       // Smaller guard since we have listening zone
             useProfiles: true,     // Explicitly enable profile-based detection
             debugMode: debugMode,  // Enable debug logging
             calibrationMode: debugMode, // Use calibration mode when debugging
-            audioGain: 120,        // Increased gain for better sensitivity
+            audioGain: 85,         // Reduced by 30% from 120 for optimal detection
             
             // Listening zone configuration - only detect in middle portion of beat
             useListeningZone: true,      // Enable listening zone feature

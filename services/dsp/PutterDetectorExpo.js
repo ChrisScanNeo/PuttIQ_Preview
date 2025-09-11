@@ -65,17 +65,17 @@ export class PutterDetectorExpo {
       sampleRate: 16000,
       frameLength: 256,
       refractoryMs: 250,
-      energyThresh: 2,  // Lowered from 6 for better sensitivity
+      energyThresh: 3,  // Reduced sensitivity by 30% (was 2)
       zcrThresh: 0.22,
       tickGuardMs: 50,  // Increased from 30ms for better tick filtering
       getUpcomingTicks: () => [],
-      getBpm: () => 40,  // Default BPM function
+      getBpm: () => 30,  // Default BPM function
       onStrike: () => {},
       useProfiles: true, // Enable profile-based detection by default
       useListeningZone: false, // Disabled by default for backwards compatibility
       listeningZonePercent: 0.4, // 40% of beat period
       listeningZoneOffset: 0.3,  // Start at 30% into beat
-      audioGain: 120.0,  // Increased from 50 for better sensitivity
+      audioGain: 85.0,  // Reduced by 30% from 120 for less false positives
       ...options
     };
 
@@ -381,7 +381,7 @@ export class PutterDetectorExpo {
     }
     
     // SIMPLIFIED: Only check for putter profile in listening zone
-    const MIN_PUTTER_ENERGY = 0.005; // Minimum energy for real putter impact
+    const MIN_PUTTER_ENERGY = 0.007; // Increased by 30% from 0.005 for fewer false positives
     
     // Check if energy is high enough to be a putt
     if (features.energy > MIN_PUTTER_ENERGY) {

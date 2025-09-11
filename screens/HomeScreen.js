@@ -28,7 +28,7 @@ export default function HomeScreen({ user }) {
     toggleDebugMode,
     start,
     stop,
-  } = usePuttIQDetector(user?.settings?.defaultBPM || 40) || {};
+  } = usePuttIQDetector(user?.settings?.defaultBPM || 30) || {};
 
   // Update sensitivity when slider changes
   useEffect(() => {
