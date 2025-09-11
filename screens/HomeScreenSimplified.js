@@ -9,7 +9,7 @@ import {
   Animated
 } from 'react-native';
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector';
-import GolfBallSVG from '../components/GolfBallSVG';
+import RealisticGolfBall from '../components/RealisticGolfBall';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -24,67 +24,39 @@ export default function HomeScreenSimplified({ user }) {
     stop,
   } = usePuttIQDetector(user?.settings?.defaultBPM || 30) || {};
 
-  const [pulseAnim] = useState(new Animated.Value(1));
-  const [ballColor, setBallColor] = useState('white');
+  const [showHitFeedback, setShowHitFeedback] = useState(false);
+  const [hitFeedbackOpacity] = useState(new Animated.Value(0));
 
-  // Change ball color based on hit quality
+  // Track if we're in listening zone
+  const inListeningZone = isRunning && beatPosition >= 0.2 && beatPosition <= 0.8;
+
+  // Handle hit feedback
   useEffect(() => {
     if (lastHit) {
-      // Determine color based on hit quality
-      let color = 'white';
-      if (lastHit.quality === 'strong') {
-        color = '#4CAF50'; // Green for good hit
-      } else if (lastHit.quality === 'medium') {
-        color = '#FFC107'; // Yellow for medium hit
-      } else if (lastHit.quality === 'weak') {
-        color = '#FF9800'; // Orange for weak hit
-      }
+      setShowHitFeedback(true);
       
-      setBallColor(color);
-      
-      // Pulse animation
+      // Fade in and out hit text
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.3,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
+        Animated.timing(hitFeedbackOpacity, {
           toValue: 1,
-          duration: 150,
+          duration: 200,
           useNativeDriver: true,
         }),
-      ]).start();
-      
-      // Reset color after a moment
-      setTimeout(() => {
-        setBallColor('white');
-      }, 500);
+        Animated.delay(300),
+        Animated.timing(hitFeedbackOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setShowHitFeedback(false);
+      });
     }
   }, [lastHit]);
-
-  // Change ball color based on beat position (subtle rhythm indicator)
-  useEffect(() => {
-    if (isRunning && beatPosition !== undefined) {
-      // Subtle color shift during listening zone (20-80% of beat)
-      if (beatPosition >= 0.2 && beatPosition <= 0.8) {
-        // Very subtle green tint during listening zone
-        if (ballColor === 'white') {
-          setBallColor('#f0fff0');
-        }
-      } else {
-        // Back to white outside listening zone
-        if (ballColor === '#f0fff0') {
-          setBallColor('white');
-        }
-      }
-    }
-  }, [beatPosition, isRunning]);
 
   const toggle = () => {
     if (isRunning) {
       stop();
-      setBallColor('white');
     } else {
       start();
     }
@@ -97,14 +69,14 @@ export default function HomeScreenSimplified({ user }) {
     return `${bpm} BPM`;
   };
 
-  // Get shadow color based on ball color
-  const getShadowColor = () => {
-    switch(ballColor) {
-      case '#4CAF50': return '#388E3C';
-      case '#FFC107': return '#F57C00';
-      case '#FF9800': return '#E65100';
-      case '#f0fff0': return '#e0f0e0';
-      default: return '#e0e0e0';
+  // Get hit quality color
+  const getHitColor = () => {
+    if (!lastHit) return '#4CAF50';
+    switch(lastHit.quality) {
+      case 'strong': return '#4CAF50';
+      case 'medium': return '#FFC107';
+      case 'weak': return '#FF9800';
+      default: return '#4CAF50';
     }
   };
 
@@ -118,59 +90,59 @@ export default function HomeScreenSimplified({ user }) {
       <TouchableOpacity 
         style={styles.golfBallContainer}
         onPress={toggle}
-        activeOpacity={0.9}
+        activeOpacity={0.95}
       >
-        <Animated.View 
-          style={{
-            transform: [{ scale: pulseAnim }]
-          }}
-        >
-          <GolfBallSVG 
-            size={100} 
-            color={ballColor}
-            shadowColor={getShadowColor()}
-          />
-        </Animated.View>
+        <RealisticGolfBall
+          size={120}
+          isHit={!!lastHit}
+          hitQuality={lastHit?.quality}
+          inListeningZone={inListeningZone}
+        />
       </TouchableOpacity>
 
-      {/* Minimal status indicator */}
+      {/* Hit feedback text */}
+      {showHitFeedback && (
+        <Animated.View 
+          style={[
+            styles.hitFeedback,
+            { opacity: hitFeedbackOpacity }
+          ]}
+        >
+          <Text style={[
+            styles.hitFeedbackText,
+            { color: getHitColor() }
+          ]}>
+            {lastHit?.quality?.toUpperCase() || 'HIT'}
+          </Text>
+        </Animated.View>
+      )}
+
+      {/* Minimal status bar */}
       <View style={styles.statusBar}>
         <Text style={styles.statusText}>
           {getStatusText()}
         </Text>
         {isRunning && (
-          <View style={styles.listeningIndicator}>
+          <View style={styles.indicators}>
+            {/* Listening zone indicator */}
             <View 
               style={[
-                styles.listeningDot,
-                { backgroundColor: beatPosition >= 0.2 && beatPosition <= 0.8 ? '#4CAF50' : '#666' }
+                styles.indicator,
+                { backgroundColor: inListeningZone ? '#4CAF50' : '#666' }
               ]} 
             />
+            {/* Beat position indicator (optional) */}
+            <View style={styles.beatBar}>
+              <View 
+                style={[
+                  styles.beatMarker,
+                  { left: `${(beatPosition || 0) * 100}%` }
+                ]}
+              />
+            </View>
           </View>
         )}
       </View>
-
-      {/* Hit feedback text (appears briefly) */}
-      {lastHit && (
-        <Animated.View 
-          style={[
-            styles.hitFeedback,
-            {
-              opacity: pulseAnim.interpolate({
-                inputRange: [1, 1.3],
-                outputRange: [0, 1]
-              })
-            }
-          ]}
-        >
-          <Text style={[
-            styles.hitFeedbackText,
-            { color: ballColor === 'white' ? '#333' : ballColor }
-          ]}>
-            {lastHit.quality?.toUpperCase() || 'HIT'}
-          </Text>
-        </Animated.View>
-      )}
     </ImageBackground>
   );
 }
@@ -186,39 +158,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  hitFeedback: {
+    position: 'absolute',
+    top: '30%',
+  },
+  hitFeedbackText: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
   statusBar: {
     position: 'absolute',
     bottom: 50,
-    flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 20,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 25,
+    minWidth: 180,
   },
   statusText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     letterSpacing: 1,
+    marginBottom: 8,
   },
-  listeningIndicator: {
-    marginLeft: 10,
+  indicators: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  listeningDot: {
+  indicator: {
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-  hitFeedback: {
-    position: 'absolute',
-    top: '35%',
+  beatBar: {
+    width: 100,
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 1,
+    position: 'relative',
   },
-  hitFeedbackText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
+  beatMarker: {
+    position: 'absolute',
+    width: 4,
+    height: 8,
+    backgroundColor: 'white',
+    borderRadius: 2,
+    top: -3,
   },
 });
