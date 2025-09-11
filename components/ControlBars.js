@@ -1,19 +1,25 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 
 /**
- * Simplified control bars for play/pause, BPM, and settings
+ * Control bars with correct icon layout:
+ * Top: Plus | BPM | Minus
+ * Bottom: Metronome | Music | Wind
  */
-export default function ControlBars({ isPlaying, onPlayPause, bpm, onSettings, onMetronome }) {
+export default function ControlBars({ bpm, onBpmIncrease, onBpmDecrease, onMetronome, onMusic, onWind }) {
   return (
     <View style={styles.container}>
-      {/* Top control bar */}
+      {/* Top control bar - BPM controls */}
       <View style={styles.controlBar}>
         <TouchableOpacity 
           style={styles.section}
-          onPress={onPlayPause}
+          onPress={onBpmDecrease}
         >
-          <Text style={styles.icon}>{isPlaying ? '⏸' : '▶'}</Text>
+          <Image 
+            source={require('../screens/icons/minus.png')} 
+            style={styles.iconImage}
+            resizeMode="contain"
+          />
         </TouchableOpacity>
         
         <View style={styles.divider} />
@@ -26,31 +32,53 @@ export default function ControlBars({ isPlaying, onPlayPause, bpm, onSettings, o
         
         <TouchableOpacity 
           style={styles.section}
-          onPress={onSettings}
+          onPress={onBpmIncrease}
         >
-          <Text style={styles.icon}>⚙</Text>
+          <Image 
+            source={require('../screens/icons/plus-symbol-button.png')} 
+            style={styles.iconImage}
+            resizeMode="contain"
+          />
         </TouchableOpacity>
       </View>
 
-      {/* Bottom control bar */}
+      {/* Bottom control bar - Feature controls */}
       <View style={[styles.controlBar, styles.bottomBar]}>
         <TouchableOpacity 
           style={styles.section}
           onPress={onMetronome}
         >
-          <Text style={styles.icon}>🔊</Text>
+          <Image 
+            source={require('../screens/icons/metronome.png')} 
+            style={styles.iconImageLarge}
+            resizeMode="contain"
+          />
         </TouchableOpacity>
         
         <View style={styles.divider} />
         
-        <TouchableOpacity style={styles.section}>
-          <Text style={styles.icon}>🎵</Text>
+        <TouchableOpacity 
+          style={styles.section}
+          onPress={onMusic}
+        >
+          <Image 
+            source={require('../screens/icons/musical-note.png')} 
+            style={styles.iconImageLarge}
+            resizeMode="contain"
+          />
         </TouchableOpacity>
         
         <View style={styles.divider} />
         
-        <TouchableOpacity style={styles.section}>
-          <Text style={styles.icon}>📊</Text>
+        <TouchableOpacity 
+          style={styles.section}
+          onPress={onWind}
+        >
+          <Image 
+            source={require('../screens/icons/wind.png')} 
+            style={styles.iconImageLarge}
+            resizeMode="contain"
+          />
         </TouchableOpacity>
       </View>
     </View>
@@ -92,8 +120,15 @@ const styles = StyleSheet.create({
     height: '60%',
     backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
-  icon: {
-    fontSize: 24,
+  iconImage: {
+    width: 20,
+    height: 20,
+    tintColor: '#333',
+  },
+  iconImageLarge: {
+    width: 24,
+    height: 24,
+    tintColor: '#333',
   },
   bpmText: {
     fontSize: 18,

@@ -8,6 +8,7 @@ import {
   Animated,
   Dimensions,
   Text,
+  Image,
 } from 'react-native';
 
 // Components
@@ -29,6 +30,7 @@ export default function HomeScreenMinimal({ user }) {
   const [triggerPulse, setTriggerPulse] = useState(false);
 
   // Detection hook
+  const detector = usePuttIQDetector(bpm);
   const {
     isInitialized,
     isRunning,
@@ -36,7 +38,7 @@ export default function HomeScreenMinimal({ user }) {
     lastHit,
     start,
     stop,
-  } = usePuttIQDetector(bpm) || {};
+  } = detector || {};
 
   // Calculate if in listening zone
   const inListeningZone = isRunning && beatPosition >= 0.2 && beatPosition <= 0.8;
@@ -49,6 +51,22 @@ export default function HomeScreenMinimal({ user }) {
       start();
     }
   };
+
+  // Handle BPM changes
+  const handleBpmIncrease = () => {
+    setBpm(prev => Math.min(100, prev + 1));
+  };
+
+  const handleBpmDecrease = () => {
+    setBpm(prev => Math.max(30, prev - 1));
+  };
+
+  // Update detector BPM when it changes
+  useEffect(() => {
+    if (detector?.setBpm) {
+      detector.setBpm(bpm);
+    }
+  }, [bpm]);
 
   // Handle hit feedback
   useEffect(() => {
@@ -146,21 +164,38 @@ export default function HomeScreenMinimal({ user }) {
             )}
           </View>
 
-          {/* Lightning bolt indicator */}
-          {showLightning && (
-            <View style={styles.lightningContainer}>
-              <Text style={styles.lightning}>⚡</Text>
+          {/* Control bars */}
+          <ControlBars
+            bpm={bpm}
+            onBpmIncrease={handleBpmIncrease}
+            onBpmDecrease={handleBpmDecrease}
+            onMetronome={() => console.log('Metronome toggled')}
+            onMusic={() => console.log('Music toggled')}
+            onWind={() => console.log('Wind toggled')}
+          />
+
+          {/* Corner indicators */}
+          {/* Metronome icon - bottom left */}
+          {isRunning && (
+            <View style={styles.metronomeIndicator}>
+              <Image 
+                source={require('../screens/icons/metronome.png')}
+                style={styles.cornerIcon}
+                resizeMode="contain"
+              />
             </View>
           )}
 
-          {/* Control bars */}
-          <ControlBars
-            isPlaying={isRunning}
-            onPlayPause={handlePlayPause}
-            bpm={bpm}
-            onSettings={() => console.log('Settings')}
-            onMetronome={() => console.log('Metronome')}
-          />
+          {/* Wind icon - bottom right */}
+          {false && ( // Set to true when wind feature is active
+            <View style={styles.windIndicator}>
+              <Image 
+                source={require('../screens/icons/wind.png')}
+                style={styles.cornerIcon}
+                resizeMode="contain"
+              />
+            </View>
+          )}
         </SafeAreaView>
       </ImageBackground>
     </View>
@@ -199,16 +234,23 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
   },
-  lightningContainer: {
+  metronomeIndicator: {
     position: 'absolute',
-    bottom: 140,
+    bottom: 30,
     left: 30,
   },
-  lightning: {
-    fontSize: 36,
-    color: '#FFD93D',
-    textShadowColor: '#FFD93D',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
+  windIndicator: {
+    position: 'absolute',
+    bottom: 30,
+    right: 30,
+  },
+  cornerIcon: {
+    width: 36,
+    height: 36,
+    tintColor: '#FFD93D',
+    shadowColor: '#FFD93D',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 10,
+    shadowOpacity: 0.5,
   },
 });
