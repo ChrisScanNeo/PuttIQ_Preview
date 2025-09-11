@@ -77,9 +77,11 @@ class ProfileManager {
       if (profile.kind === 'target' && profile.threshold < 0.88) {
         console.log(`Updating target profile "${profile.name}" threshold from ${profile.threshold} to 0.90`);
         profile.threshold = 0.90; // Standard threshold for putter
-      } else if (profile.kind === 'ignore' && profile.threshold < 0.97) {
-        console.log(`Updating ignore profile "${profile.name}" threshold from ${profile.threshold} to 0.97`);
-        profile.threshold = 0.97; // Ultra-strict for metronome
+      } else if (profile.kind === 'ignore') {
+        // EMERGENCY FIX: Make metronome filtering EXTREMELY conservative
+        // Only filter if it's 99%+ similar to avoid filtering real putts
+        console.log(`Setting ignore profile "${profile.name}" threshold to 0.99 (was ${profile.threshold})`);
+        profile.threshold = 0.99; // Only filter if REALLY sure it's metronome
       }
       
       // Store in map
