@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
-// Using SimpleNavigator to avoid react-native-safe-area-context issues
-import SimpleNavigator from './navigation/SimpleNavigator';
+// Using MinimalNavigator for simplified UI
+import MinimalNavigator from './navigation/MinimalNavigator';
+// import SimpleNavigator from './navigation/SimpleNavigator';
 // import AppNavigator from './navigation/AppNavigator';
 import { authenticateUser } from './services/auth';
 
@@ -56,7 +57,7 @@ export default function App() {
   
   return (
     <>
-      <SimpleNavigator user={user} />
+      <MinimalNavigator user={user} />
       <StatusBar style="auto" />
     </>
   );

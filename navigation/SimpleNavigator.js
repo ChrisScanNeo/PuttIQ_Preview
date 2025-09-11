@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 
 // Import screens
-import HomeScreen from '../screens/HomeScreen';
+import HomeScreenSimplified from '../screens/HomeScreenSimplified';
 import ProfileManagerScreen from '../screens/ProfileManagerScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import PutterCalibrationScreen from '../screens/PutterCalibrationScreen';
@@ -42,7 +42,7 @@ export default function SimpleNavigator({ user }) {
     // Show tab screens
     switch (activeTab) {
       case 'Home':
-        return <HomeScreen user={user} />;
+        return <HomeScreenSimplified user={user} />;
       case 'Profiles':
         return <ProfileManagerScreen route={{ params: { user } }} />;
       case 'Settings':
@@ -51,7 +51,7 @@ export default function SimpleNavigator({ user }) {
           navigation={navigation}
         />;
       default:
-        return <HomeScreen user={user} />;
+        return <HomeScreenSimplified user={user} />;
     }
   };
 
