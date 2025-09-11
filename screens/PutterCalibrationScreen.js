@@ -309,6 +309,38 @@ export default function PutterCalibrationScreen({ navigation, route }) {
         throw new Error(result.error || 'Failed to build profile from recordings');
       }
       
+      // Add quality checks before saving
+      const avgEnergy = recordingsRef.current.reduce((sum, r) => sum + r.features.maxEnergy, 0) / recordingsRef.current.length;
+      
+      // Check signal quality
+      if (avgEnergy < 0.005) {
+        Alert.alert(
+          '⚠️ Weak Signal Detected',
+          'The recorded putts had very low audio levels. Please move your phone closer (0.5-1.5m from the ball) and try again.',
+          [{ text: 'OK', onPress: () => setIsCalibrating(false) }]
+        );
+        return;
+      }
+      
+      // Check profile quality
+      if (result.quality && result.quality === 'low') {
+        Alert.alert(
+          '⚠️ Inconsistent Putts',
+          'The recorded putts were too inconsistent. Please try to hit more consistently and try again.',
+          [{ text: 'OK', onPress: () => setIsCalibrating(false) }]
+        );
+        return;
+      }
+      
+      // Update threshold based on quality
+      if (result.quality === 'high') {
+        result.profile.threshold = 0.92;  // Stricter for high quality profiles
+      } else if (result.quality === 'medium') {
+        result.profile.threshold = 0.90;  // Standard threshold
+      } else {
+        result.profile.threshold = 0.88;  // More lenient for lower quality
+      }
+      
       // Save profile
       await profileManager.saveProfile(result.profile);
       

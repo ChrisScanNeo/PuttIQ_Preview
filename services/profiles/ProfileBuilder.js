@@ -51,7 +51,7 @@ class ProfileBuilder {
     }
     
     // Determine appropriate threshold based on profile type
-    const threshold = kind === 'target' ? 0.80 : 0.88;
+    const threshold = kind === 'target' ? 0.90 : 0.97;  // Stricter thresholds
     
     // Create profile object
     const profile = {
@@ -462,7 +462,7 @@ class ProfileBuilder {
       }
       name = 'Test Putter';
       kind = 'target';
-      threshold = 0.80;
+      threshold = 0.90;  // Stricter threshold for putter
     } else {
       // Metronome: sharp peak around 1-3 kHz
       template = new Float32Array(128);
@@ -473,7 +473,7 @@ class ProfileBuilder {
       }
       name = 'Test Metronome';
       kind = 'ignore';
-      threshold = 0.88;
+      threshold = 0.97;  // Ultra-strict for ignore profiles
     }
     
     // Apply log scale and normalize

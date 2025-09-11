@@ -45,7 +45,7 @@ class MetronomeTemplateGenerator {
         name,
         kind: 'ignore',
         template,
-        threshold: 0.88,
+        threshold: 0.97,  // Ultra-strict to prevent false matches
         sampleRate: this.sampleRate,
         frameSize: this.frameSize,
         isDefault: true,
@@ -117,7 +117,7 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Wood Block',
       kind: 'ignore',
       template: spectralAnalysis.normalize(woodTemplate),
-      threshold: 0.95,  // Very strict threshold to prevent false matches
+      threshold: 0.97,  // Ultra-strict threshold to prevent false matches
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,
@@ -144,7 +144,7 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Electronic Beep',
       kind: 'ignore',
       template: spectralAnalysis.normalize(beepTemplate),
-      threshold: 0.96,  // Extremely strict for electronic beeps
+      threshold: 0.97,  // Ultra-strict for electronic beeps
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,
@@ -181,7 +181,7 @@ class MetronomeTemplateGenerator {
       name: 'Metronome: Rimshot',
       kind: 'ignore',
       template: spectralAnalysis.normalize(rimshotTemplate),
-      threshold: 0.72,  // Stricter filtering
+      threshold: 0.97,  // Ultra-strict filtering
       sampleRate: this.sampleRate,
       frameSize: this.frameSize,
       isDefault: true,

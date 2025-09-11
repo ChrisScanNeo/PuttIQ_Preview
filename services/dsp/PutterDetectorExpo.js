@@ -65,9 +65,9 @@ export class PutterDetectorExpo {
       sampleRate: 16000,
       frameLength: 256,
       refractoryMs: 250,
-      energyThresh: 6,
+      energyThresh: 2,  // Lowered from 6 for better sensitivity
       zcrThresh: 0.22,
-      tickGuardMs: 30,
+      tickGuardMs: 50,  // Increased from 30ms for better tick filtering
       getUpcomingTicks: () => [],
       getBpm: () => 40,  // Default BPM function
       onStrike: () => {},
@@ -75,7 +75,7 @@ export class PutterDetectorExpo {
       useListeningZone: false, // Disabled by default for backwards compatibility
       listeningZonePercent: 0.4, // 40% of beat period
       listeningZoneOffset: 0.3,  // Start at 30% into beat
-      audioGain: 50.0,  // Default audio gain/amplification
+      audioGain: 120.0,  // Increased from 50 for better sensitivity
       ...options
     };
 
@@ -119,11 +119,11 @@ export class PutterDetectorExpo {
    * Initialize DSP filters
    */
   initializeFilters() {
-    // Create band-pass filter cascade (1-6 kHz for impact emphasis)
+    // Create band-pass filter cascade (200-8000 Hz to capture both thump and crack)
     this.bandpassFilter = FilterCascade.createBandpass(
       this.opts.sampleRate,
-      1000,  // Low cutoff: 1 kHz
-      6000   // High cutoff: 6 kHz
+      200,   // Low cutoff: 200 Hz (was 1000)
+      8000   // High cutoff: 8000 Hz (was 6000)
     );
   }
 
@@ -542,6 +542,11 @@ export class PutterDetectorExpo {
     // Update history
     this.energyHistory[this.historyIndex] = energy;
     this.historyIndex = (this.historyIndex + 1) % this.energyHistory.length;
+
+    // Debug logging for raw amplitude (every 50 frames)
+    if (this.frameCount % 50 === 0) {
+      console.log(`RAW maxAbs=${maxAbs.toFixed(4)} (should be >0.01 for good signal)`);
+    }
 
     return {
       energy,

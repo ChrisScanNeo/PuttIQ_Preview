@@ -92,7 +92,7 @@ export function usePuttIQDetector(defaultBpm = 40) {
             useProfiles: true,     // Explicitly enable profile-based detection
             debugMode: debugMode,  // Enable debug logging
             calibrationMode: debugMode, // Use calibration mode when debugging
-            audioGain: 50,         // Default audio gain for amplification
+            audioGain: 120,        // Increased gain for better sensitivity
             
             // Listening zone configuration - only detect in middle portion of beat
             useListeningZone: true,      // Enable listening zone feature
