@@ -22,7 +22,7 @@ const RealisticGolfBall = ({
     }
   };
 
-  // Pulse animation when hit
+  // Pulse animation when hit (300ms total as per spec)
   useEffect(() => {
     if (isHit) {
       // Ball pulse
@@ -39,7 +39,7 @@ const RealisticGolfBall = ({
         }),
       ]).start();
 
-      // Ring expansion animation
+      // Ring expansion animation (500ms as per spec)
       Animated.parallel([
         Animated.sequence([
           Animated.timing(ringOpacity, {
