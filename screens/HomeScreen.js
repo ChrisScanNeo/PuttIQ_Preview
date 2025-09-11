@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, ImageBackground, Image, Dimensions } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector'; // Using the new detector hook
 import TimingZoneBar from '../components/TimingZoneBar';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function HomeScreen({ user }) {
   const [isPremium, setIsPremium] = useState(user?.isPremium || false);
@@ -65,19 +67,54 @@ export default function HomeScreen({ user }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeContainer}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <ImageBackground 
+      source={require('../assets/grass-background.jpeg')} 
+      style={styles.backgroundImage}
+      resizeMode="cover"
+    >
+      <SafeAreaView style={styles.safeContainer}>
+        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        {/* Logo in top-right corner */}
         <View style={styles.header}>
-          <Text style={styles.title}>PuttIQ</Text>
-          {!isPremium && (
-            <TouchableOpacity style={styles.premiumBadge}>
-              <Text style={styles.premiumText}>🔒 Free Version</Text>
-            </TouchableOpacity>
-          )}
+          <View style={styles.logoContainer}>
+            <Image 
+              source={require('../assets/puttiq-logo.jpg')} 
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+        </View>
+
+        {/* Golf ball in center - temporarily using placeholder */}
+        <View style={styles.golfBallContainer}>
+          <View style={styles.golfBallPlaceholder}>
+            <Text style={styles.golfBallIcon}>⚪</Text>
+          </View>
+        </View>
+
+        {/* BPM Controls on left side */}
+        <View style={styles.bpmControlsContainer}>
+          <TouchableOpacity 
+            style={styles.bpmButton} 
+            onPress={() => updateBpm(Math.max(30, bpm - 1))}
+            disabled={isRunning}
+          >
+            <Text style={styles.bpmButtonText}>-</Text>
+          </TouchableOpacity>
+          <View style={styles.bpmDisplay}>
+            <Text style={styles.bpmValue}>{bpm}</Text>
+            <Text style={styles.bpmLabel}>BPM</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.bpmButton} 
+            onPress={() => updateBpm(Math.min(60, bpm + 1))}
+            disabled={isRunning}
+          >
+            <Text style={styles.bpmButtonText}>+</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.metronomeArea}>
-          <Text style={styles.bpmText}>Tempo: {bpm} BPM</Text>
           <View style={styles.sliderContainer}>
             <Text style={styles.sliderLabel}>30</Text>
             <Slider
@@ -225,65 +262,120 @@ export default function HomeScreen({ user }) {
             </View>
           )}
         </View>
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  backgroundImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
   safeContainer: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     flexGrow: 1,
     padding: 15,
     paddingTop: 5,
-    justifyContent: 'space-between',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 5,
-    marginBottom: 10,
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
   },
-  title: {
-    fontSize: 28,
+  logoContainer: {
+    width: 150,
+    height: 60,
+  },
+  logo: {
+    width: '100%',
+    height: '100%',
+  },
+  golfBallContainer: {
+    position: 'absolute',
+    top: screenHeight * 0.35,
+    left: screenWidth * 0.5 - 40,
+    width: 80,
+    height: 80,
+    zIndex: 5,
+  },
+  golfBallPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'white',
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  golfBallIcon: {
+    fontSize: 60,
+  },
+  bpmControlsContainer: {
+    position: 'absolute',
+    left: 20,
+    top: screenHeight * 0.35,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  bpmButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#2E7D32',
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 5,
+  },
+  bpmButtonText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  bpmDisplay: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  bpmValue: {
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#2E7D32',
   },
-  premiumBadge: {
-    backgroundColor: '#FFF3E0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  premiumText: {
-    fontSize: 12,
-    color: '#E65100',
-    fontWeight: '600',
+  bpmLabel: {
+    fontSize: 14,
+    color: '#666',
   },
   metronomeArea: {
+    marginTop: screenHeight * 0.1,
     width: '100%',
     padding: 10,
     alignItems: 'center',
-  },
-  bpmText: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 10,
-    color: '#333',
   },
   sliderContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
     marginBottom: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    padding: 10,
+    borderRadius: 10,
   },
   sliderLabel: {
     fontSize: 12,
@@ -317,6 +409,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 35,
     paddingVertical: 12,
     borderRadius: 25,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   stopButton: {
     backgroundColor: '#FF6B6B',
@@ -346,6 +443,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 20,
     minHeight: 100,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 15,
+    padding: 15,
   },
   statusRow: {
     flexDirection: 'row',
