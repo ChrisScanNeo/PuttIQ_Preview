@@ -28,8 +28,8 @@ class ProfileManager {
     try {
       this.userId = userId;
       
-      // Load default metronome profiles
-      await this.loadDefaultProfiles();
+      // SIMPLIFIED: No longer loading metronome profiles
+      // The listening zone handles metronome filtering by timing
       
       // Load user profiles from Firebase
       const userProfiles = await firebaseProfileService.loadUserProfiles(userId);
@@ -73,15 +73,15 @@ class ProfileManager {
         profile.template = spectralAnalysis.base64ToFloat32(profile.template);
       }
       
-      // Fix thresholds for existing profiles that have old values
-      if (profile.kind === 'target' && profile.threshold < 0.88) {
-        console.log(`Updating target profile "${profile.name}" threshold from ${profile.threshold} to 0.90`);
-        profile.threshold = 0.90; // Standard threshold for putter
-      } else if (profile.kind === 'ignore') {
-        // EMERGENCY FIX: Make metronome filtering EXTREMELY conservative
-        // Only filter if it's 99%+ similar to avoid filtering real putts
-        console.log(`Setting ignore profile "${profile.name}" threshold to 0.99 (was ${profile.threshold})`);
-        profile.threshold = 0.99; // Only filter if REALLY sure it's metronome
+      // SIMPLIFIED: Only handle target profiles, skip ignore profiles
+      if (profile.kind === 'ignore') {
+        return; // Skip all ignore profiles - we don't need them with listening zone
+      }
+      
+      // Fix threshold for putter profiles if needed
+      if (profile.kind === 'target' && profile.threshold < 0.85) {
+        console.log(`Updating target profile "${profile.name}" threshold from ${profile.threshold} to 0.85`);
+        profile.threshold = 0.85; // Standard threshold for putter
       }
       
       // Store in map
@@ -97,15 +97,7 @@ class ProfileManager {
       }
     });
     
-    // Add default profiles to ignore list if not already present
-    this.defaultProfiles.forEach(defaultProfile => {
-      if (!this.profiles.has(defaultProfile.id)) {
-        this.profiles.set(defaultProfile.id, defaultProfile);
-        if (defaultProfile.enabled) {
-          this.enabledProfiles.ignore.push(defaultProfile);
-        }
-      }
-    });
+    // SIMPLIFIED: No default profiles needed anymore
   }
 
   /**
@@ -230,6 +222,38 @@ class ProfileManager {
       type: 'pass',
       reason: 'No target profiles configured'
     };
+  }
+
+  /**
+   * SIMPLIFIED: Check only for putter profile match
+   * @param {Float32Array} spectrum - Spectral data to check
+   * @returns {Object|null} Match result or null
+   */
+  checkPutterProfile(spectrum) {
+    if (!spectrum || this.enabledProfiles.target.length === 0) {
+      return null;
+    }
+    
+    // Find best matching putter profile
+    let bestMatch = null;
+    let bestSimilarity = 0;
+    
+    for (const profile of this.enabledProfiles.target) {
+      const similarity = spectralAnalysis.cosineSimilarity(spectrum, profile.template);
+      if (similarity > bestSimilarity) {
+        bestMatch = profile;
+        bestSimilarity = similarity;
+      }
+    }
+    
+    if (bestMatch) {
+      return {
+        profile: bestMatch.name,
+        similarity: bestSimilarity
+      };
+    }
+    
+    return null;
   }
 
   /**

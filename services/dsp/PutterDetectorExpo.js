@@ -380,49 +380,36 @@ export class PutterDetectorExpo {
       console.log(`🔊 Sound detected: Energy=${features.energy.toFixed(6)} (${(features.energy/threshold * 100).toFixed(0)}% of threshold)`);
     }
     
-    // Check profiles for ANY sound above minimal threshold (not 0.5x)
-    if (this.profileCheckEnabled && this.useProfiles && features.energy > this.baseline * 2) {
-      // Compute spectrum from recent frames
-      try {
-        const spectrum = this.computeSpectrumFromBuffer();
-        if (spectrum) {
-          // Check against profiles
-          profileMatch = profileManager.checkSpectrum(spectrum);
-          
-          if (profileMatch.type === 'ignore') {
-            // Sound matches ignore profile (e.g., metronome) - filter it out
-            console.log(`🔇 FILTERED OUT: ${profileMatch.profile} (similarity: ${(profileMatch.similarity * 100).toFixed(1)}%)`);
-            console.log(`   Energy was: ${features.energy.toFixed(6)}, would have triggered: ${features.energy > threshold}`);
-            return; // Skip this frame completely
-          } else if (profileMatch.type === 'target') {
-            // Sound matches target profile (putter) - but check minimum energy
-            const MIN_PUTTER_ENERGY = 0.005; // Lowered from 0.01 - some putts are softer
-            if (features.energy < MIN_PUTTER_ENERGY) {
-              console.log(`⚠️ PROFILE MATCH but energy too low: ${profileMatch.profile} (energy: ${features.energy.toFixed(6)} < ${MIN_PUTTER_ENERGY})`);
-              return; // Too weak to be a real putt
-            }
-            isHit = true;
-            console.log(`✅ PROFILE MATCH: ${profileMatch.profile} (similarity: ${(profileMatch.similarity * 100).toFixed(1)}%)`);
-          } else if (profileMatch.type === 'no_match') {
-            // Sound didn't match any profile
-            console.log(`❓ No profile match (energy: ${features.energy.toFixed(6)})`);
-          }
-          // For 'no_match' or 'pass', fall through to basic detection
-        }
-      } catch (error) {
-        console.error('❌ Profile check failed:', error);
-      }
-    } else if (features.energy > this.baseline * 2) {
-      // Any sound above baseline but below profile check
-      console.log(`📉 Low energy sound: ${features.energy.toFixed(6)} (${(features.energy/threshold * 100).toFixed(0)}% of threshold)`);
-      console.log(`   Attempting basic detection anyway...`);
-    }
+    // SIMPLIFIED: Only check for putter profile in listening zone
+    const MIN_PUTTER_ENERGY = 0.005; // Minimum energy for real putter impact
     
-    // Always try basic detection if no profile match (don't require profile match)
-    if (!isHit) {
-      isHit = this.detectImpact(features, threshold);
-      if (isHit && !profileMatch) {
-        console.log(`🎯 Basic detection triggered (no profile match)`);
+    // Check if energy is high enough to be a putt
+    if (features.energy > MIN_PUTTER_ENERGY) {
+      // If we have a putter profile, check similarity
+      if (this.profileCheckEnabled && this.useProfiles) {
+        try {
+          const spectrum = this.computeSpectrumFromBuffer();
+          if (spectrum) {
+            // Only check for putter profile match
+            profileMatch = profileManager.checkPutterProfile(spectrum);
+            
+            if (profileMatch && profileMatch.similarity > 0.85) {
+              // Putter detected!
+              isHit = true;
+              console.log(`✅ PUTT DETECTED: ${profileMatch.profile} (similarity: ${(profileMatch.similarity * 100).toFixed(1)}%)`);
+            } else if (profileMatch) {
+              console.log(`❓ Weak match: ${(profileMatch.similarity * 100).toFixed(1)}% similarity`);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Profile check failed:', error);
+        }
+      }
+      
+      // If no profile or no match, use basic energy detection
+      if (!isHit && features.energy > threshold && features.zcr > this.opts.zcrThresh) {
+        isHit = true;
+        console.log(`🎯 Basic detection: Energy=${features.energy.toFixed(6)}, ZCR=${features.zcr.toFixed(3)}`);
       }
     }
 
