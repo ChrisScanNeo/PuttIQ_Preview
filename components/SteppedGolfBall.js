@@ -14,16 +14,16 @@ const SteppedGolfBall = ({
 
   // Preload all ball images
   const ballImages = useMemo(() => ({
-    1: require('../assets/ball/golf-ball-step-1.png'),
-    2: require('../assets/ball/golf-ball-step-2.png'),
-    3: require('../assets/ball/golf-ball-step-3.png'),
-    4: require('../assets/ball/golf-ball-step-4.png'),
-    5: require('../assets/ball/golf-ball-step-5.png'),
-    6: require('../assets/ball/golf-ball-step-6.png'),
-    7: require('../assets/ball/golf-ball-step-7.png'),
-    8: require('../assets/ball/golf-ball-step-8.png'),
-    9: require('../assets/ball/golf-ball-step-9.png'),
-    10: require('../assets/ball/golf-ball-step-10.png'),
+    1: require('../assets/ball/1.png'),
+    2: require('../assets/ball/2.png'),
+    3: require('../assets/ball/3.png'),
+    4: require('../assets/ball/4.png'),
+    5: require('../assets/ball/5.png'),
+    6: require('../assets/ball/6.png'),
+    7: require('../assets/ball/7.png'),
+    8: require('../assets/ball/8.png'),
+    9: require('../assets/ball/9.png'),
+    10: require('../assets/ball/10.png'),
   }), []);
 
   // Calculate which step image to show based on beat position
