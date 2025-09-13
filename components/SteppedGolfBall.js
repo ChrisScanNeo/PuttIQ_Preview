@@ -177,14 +177,15 @@ const SteppedGolfBall = ({
         {/* Debug text - remove this after testing */}
         <View style={{ 
           position: 'absolute', 
-          top: -35, 
+          top: -50, 
           backgroundColor: 'white',
           borderRadius: 5,
-          padding: 5,
-          borderWidth: 1,
-          borderColor: 'black'
+          padding: 8,
+          borderWidth: 2,
+          borderColor: 'black',
+          zIndex: 100
         }}>
-          <Text style={{ fontSize: 14, color: 'black', fontWeight: 'bold' }}>
+          <Text style={{ fontSize: 18, color: 'black', fontWeight: 'bold' }}>
             Step: {currentStep} | Pos: {beatPosition.toFixed(2)}
           </Text>
         </View>

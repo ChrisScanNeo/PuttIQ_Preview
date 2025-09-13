@@ -129,15 +129,15 @@ export default function HomeScreenMinimal({ user }) {
             beatPosition={beatPosition || 0}
           />
 
-          {/* Golf ball in center */}
-          <View style={styles.centerContent}>
+          {/* Golf ball between slider and control bars */}
+          <View style={styles.golfBallSection}>
             <TouchableOpacity
               onPress={handlePlayPause}
               activeOpacity={0.95}
               style={styles.golfBallTouch}
             >
               <SteppedGolfBall
-                size={150}
+                size={450}
                 beatPosition={beatPosition}
                 isHit={triggerPulse}
                 hitQuality={currentHitQuality}
@@ -218,8 +218,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  golfBallSection: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 20,
+  },
   golfBallTouch: {
-    padding: 20,
+    padding: 10,
   },
   hitFeedback: {
     position: 'absolute',
