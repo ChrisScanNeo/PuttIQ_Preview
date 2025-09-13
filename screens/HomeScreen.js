@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, Ima
 import Slider from '@react-native-community/slider';
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector'; // Using the new detector hook
 import TimingZoneBar from '../components/TimingZoneBar';
+import SteppedGolfBall from '../components/SteppedGolfBall';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -85,11 +86,14 @@ export default function HomeScreen({ user }) {
           </View>
         </View>
 
-        {/* Golf ball in center - temporarily using placeholder */}
+        {/* Golf ball in center with color transitions */}
         <View style={styles.golfBallContainer}>
-          <View style={styles.golfBallPlaceholder}>
-            <Text style={styles.golfBallIcon}>⚪</Text>
-          </View>
+          <SteppedGolfBall
+            size={80}
+            beatPosition={beatPosition}
+            isHit={lastHit !== null && Date.now() - lastHit.timestamp < 500}
+            hitQuality={lastHit?.quality}
+          />
         </View>
 
         {/* BPM Controls on left side */}
@@ -308,22 +312,8 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     zIndex: 5,
-  },
-  golfBallPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'white',
-    borderRadius: 40,
-    justifyContent: 'center',
     alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  golfBallIcon: {
-    fontSize: 60,
+    justifyContent: 'center',
   },
   bpmControlsContainer: {
     position: 'absolute',
