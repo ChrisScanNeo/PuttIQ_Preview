@@ -1,0 +1,1 @@
+<full MinimalNavigator.js code from previous response>
