@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useMemo } from 'react';
-import { View, Animated, StyleSheet, Image } from 'react-native';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
+import { View, Animated, StyleSheet, Image, Text } from 'react-native';
 
 const SteppedGolfBall = ({ 
   size = 80, 
@@ -10,6 +10,7 @@ const SteppedGolfBall = ({
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const ringOpacity = useRef(new Animated.Value(0)).current;
   const ringScale = useRef(new Animated.Value(0.8)).current;
+  const [imageError, setImageError] = useState(null);
 
   // Preload all ball images
   const ballImages = useMemo(() => ({
@@ -48,6 +49,11 @@ const SteppedGolfBall = ({
 
   // Get current step based on beat position
   const currentStep = calculateStep(beatPosition);
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('SteppedGolfBall - beatPosition:', beatPosition, 'currentStep:', currentStep);
+  }, [beatPosition, currentStep]);
 
   // Get color for hit quality feedback
   const getHitColor = () => {
@@ -136,7 +142,15 @@ const SteppedGolfBall = ({
           source={ballImages[currentStep]}
           style={{ width: size, height: size }}
           resizeMode="contain"
+          onError={(e) => {
+            console.error('Failed to load image for step', currentStep, e.nativeEvent.error);
+            setImageError(`Failed to load step ${currentStep}`);
+          }}
         />
+        {/* Debug text - remove this after testing */}
+        <Text style={{ position: 'absolute', top: -20, fontSize: 10, color: 'red' }}>
+          Step: {currentStep} | Pos: {beatPosition.toFixed(2)}
+        </Text>
       </Animated.View>
 
       {/* Drop shadow for depth */}
