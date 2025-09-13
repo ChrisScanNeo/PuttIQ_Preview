@@ -14,7 +14,7 @@ import {
 // Components
 import ColoredDotsIndicator from '../components/ColoredDotsIndicator';
 import ControlBars from '../components/ControlBars';
-import RealisticGolfBall from '../components/RealisticGolfBall';
+import SteppedGolfBall from '../components/SteppedGolfBall';
 
 // Hooks
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector';
@@ -136,11 +136,11 @@ export default function HomeScreenMinimal({ user }) {
               activeOpacity={0.95}
               style={styles.golfBallTouch}
             >
-              <RealisticGolfBall
+              <SteppedGolfBall
                 size={150}
+                beatPosition={beatPosition}
                 isHit={triggerPulse}
                 hitQuality={currentHitQuality}
-                inListeningZone={inListeningZone}
               />
             </TouchableOpacity>
 
