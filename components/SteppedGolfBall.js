@@ -11,6 +11,7 @@ const SteppedGolfBall = ({
   const ringOpacity = useRef(new Animated.Value(0)).current;
   const ringScale = useRef(new Animated.Value(0.8)).current;
   const [imageError, setImageError] = useState(null);
+  const [imagesLoaded, setImagesLoaded] = useState(false);
 
   // Preload all ball images
   const ballImages = useMemo(() => ({
@@ -50,6 +51,13 @@ const SteppedGolfBall = ({
   // Get current step based on beat position
   const currentStep = calculateStep(beatPosition);
   
+  // Component mount logging
+  useEffect(() => {
+    console.log('SteppedGolfBall mounted with size:', size);
+    setImagesLoaded(true);
+    return () => console.log('SteppedGolfBall unmounted');
+  }, []);
+
   // Debug logging
   useEffect(() => {
     console.log('SteppedGolfBall - beatPosition:', beatPosition, 'currentStep:', currentStep);
@@ -138,19 +146,48 @@ const SteppedGolfBall = ({
           }
         ]}
       >
-        <Image
-          source={ballImages[currentStep]}
-          style={{ width: size, height: size }}
-          resizeMode="contain"
-          onError={(e) => {
-            console.error('Failed to load image for step', currentStep, e.nativeEvent.error);
-            setImageError(`Failed to load step ${currentStep}`);
-          }}
-        />
+        {imageError ? (
+          // Fallback colored circle if image fails
+          <View style={{
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: currentStep === 10 ? '#FF6B6B' : `rgba(255, 107, 107, ${currentStep * 0.1})`,
+            justifyContent: 'center',
+            alignItems: 'center',
+            borderWidth: 2,
+            borderColor: '#333'
+          }}>
+            <Text style={{ color: 'white', fontSize: 20, fontWeight: 'bold' }}>{currentStep}</Text>
+          </View>
+        ) : (
+          <Image
+            source={ballImages[currentStep]}
+            style={{ width: size, height: size }}
+            resizeMode="contain"
+            onError={(e) => {
+              console.error('Failed to load image for step', currentStep, e.nativeEvent.error);
+              setImageError(`Failed to load step ${currentStep}`);
+            }}
+            onLoad={() => {
+              console.log('Successfully loaded image for step', currentStep);
+            }}
+          />
+        )}
         {/* Debug text - remove this after testing */}
-        <Text style={{ position: 'absolute', top: -20, fontSize: 10, color: 'red' }}>
-          Step: {currentStep} | Pos: {beatPosition.toFixed(2)}
-        </Text>
+        <View style={{ 
+          position: 'absolute', 
+          top: -35, 
+          backgroundColor: 'white',
+          borderRadius: 5,
+          padding: 5,
+          borderWidth: 1,
+          borderColor: 'black'
+        }}>
+          <Text style={{ fontSize: 14, color: 'black', fontWeight: 'bold' }}>
+            Step: {currentStep} | Pos: {beatPosition.toFixed(2)}
+          </Text>
+        </View>
       </Animated.View>
 
       {/* Drop shadow for depth */}

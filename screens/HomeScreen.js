@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   },
   golfBallContainer: {
     position: 'absolute',
-    top: screenHeight * 0.25,
+    top: screenHeight * 0.15,
     left: screenWidth * 0.5 - 48,
     width: 96,
     height: 96,
