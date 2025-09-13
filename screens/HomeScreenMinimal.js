@@ -137,7 +137,7 @@ export default function HomeScreenMinimal({ user }) {
               style={styles.golfBallTouch}
             >
               <SteppedGolfBall
-                size={300}
+                size={200}
                 beatPosition={beatPosition}
                 isHit={triggerPulse}
                 hitQuality={currentHitQuality}
@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   },
   golfBallSection: {
     position: 'absolute',
-    top: '20%',
+    top: '35%',
     left: 0,
     right: 0,
     alignItems: 'center',
