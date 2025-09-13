@@ -89,7 +89,7 @@ export default function HomeScreen({ user }) {
         {/* Golf ball in center with color transitions */}
         <View style={styles.golfBallContainer}>
           <SteppedGolfBall
-            size={80}
+            size={96}
             beatPosition={beatPosition}
             isHit={lastHit !== null && Date.now() - lastHit.timestamp < 500}
             hitQuality={lastHit?.quality}
@@ -307,10 +307,10 @@ const styles = StyleSheet.create({
   },
   golfBallContainer: {
     position: 'absolute',
-    top: screenHeight * 0.35,
-    left: screenWidth * 0.5 - 40,
-    width: 80,
-    height: 80,
+    top: screenHeight * 0.25,
+    left: screenWidth * 0.5 - 48,
+    width: 96,
+    height: 96,
     zIndex: 5,
     alignItems: 'center',
     justifyContent: 'center',
