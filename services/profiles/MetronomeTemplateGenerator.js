@@ -1,4 +1,4 @@
-import { Audio } from 'expo-av';
+import { Audio } from 'expo-audio';
 import { spectralAnalysis } from '../dsp/SpectralAnalysis';
 import * as FileSystem from 'expo-file-system';
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Audio } from 'expo-av';
+import { Audio } from 'expo-audio';
 
 /**
  * Drift-corrected metronome engine with zone helpers (20-80% of beat)

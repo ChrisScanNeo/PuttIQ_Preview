@@ -6,7 +6,6 @@ export default {
     orientation: "landscape",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
-    newArchEnabled: true,
     splash: {
       image: "./assets/splash.png",
       resizeMode: "contain",
@@ -42,7 +41,7 @@ export default {
         {
           ios: {
             useFrameworks: "static",
-            deploymentTarget: "15.1"
+            deploymentTarget: "16.0"
           }
         }
       ],

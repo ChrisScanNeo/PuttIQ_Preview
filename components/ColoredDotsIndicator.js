@@ -1,24 +1,34 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet, Animated, Platform } from 'react-native';
 
 /**
  * Colored dots indicator that shows beat progression
- * Different colored dots light up in sequence
+ * Red -> Orange -> Green -> Orange -> Red color transition
+ * Similar to TempoStik+ visual feedback system
  */
 export default function ColoredDotsIndicator({ periodMs, running, beatPosition }) {
+  // Create dots with red-orange-green gradient
+  // Red at edges, orange in transition, green at center
   const dots = [
-    { color: '#FF6B6B', position: 0.0 },   // Red
-    { color: '#4ECDC4', position: 0.083 },  // Teal
-    { color: '#FFD93D', position: 0.166 },  // Yellow
-    { color: '#6BCF7F', position: 0.25 },   // Green
-    { color: '#FFD93D', position: 0.333 },  // Yellow
-    { color: '#95E1D3', position: 0.416 },  // Mint
-    { color: '#FFD93D', position: 0.5 },    // Yellow
-    { color: '#FFD93D', position: 0.583 },  // Yellow
-    { color: '#6BCF7F', position: 0.666 },  // Green
-    { color: '#FFD93D', position: 0.75 },   // Yellow
-    { color: '#FF6B6B', position: 0.833 },  // Red
-    { color: '#4ECDC4', position: 0.916 },  // Teal
+    { color: '#FF4444', position: 0.0 },    // Red (edge)
+    { color: '#FF5555', position: 0.083 },  // Red
+    { color: '#FF6644', position: 0.166 },  // Red-Orange
+    { color: '#FF8833', position: 0.20 },   // Orange (transition start)
+    { color: '#FFAA22', position: 0.25 },   // Orange
+    { color: '#FFBB11', position: 0.30 },   // Orange-Yellow
+    { color: '#DDCC00', position: 0.35 },   // Yellow-Green (green zone start)
+    { color: '#88DD00', position: 0.40 },   // Light Green
+    { color: '#44EE00', position: 0.45 },   // Green
+    { color: '#00FF00', position: 0.50 },   // Bright Green (CENTER - perfect timing)
+    { color: '#44EE00', position: 0.55 },   // Green
+    { color: '#88DD00', position: 0.60 },   // Light Green
+    { color: '#DDCC00', position: 0.65 },   // Yellow-Green (green zone end)
+    { color: '#FFBB11', position: 0.70 },   // Orange-Yellow
+    { color: '#FFAA22', position: 0.75 },   // Orange
+    { color: '#FF8833', position: 0.80 },   // Orange (transition end)
+    { color: '#FF6644', position: 0.833 },  // Red-Orange
+    { color: '#FF5555', position: 0.916 },  // Red
+    { color: '#FF4444', position: 1.0 },    // Red (edge)
   ];
 
   const dotAnimations = useRef(dots.map(() => new Animated.Value(0.3))).current;
@@ -32,22 +42,40 @@ export default function ColoredDotsIndicator({ periodMs, running, beatPosition }
       return;
     }
 
-    // Animate dots based on beat position
+    // Animate dots based on beat position - simpler smooth wave
     const animateDots = () => {
       dots.forEach((dot, index) => {
-        // Calculate distance from current beat position
         const distance = Math.abs(beatPosition - dot.position);
-        const proximity = Math.max(0, 1 - distance * 10); // Light up dots near current position
-        
+
+        // Simple wave with smooth falloff
+        let intensity;
+        if (distance < 0.03) {
+          // At position - brightest
+          intensity = 1.0;
+        } else if (distance < 0.06) {
+          // Very close
+          intensity = 0.85;
+        } else if (distance < 0.1) {
+          // Close
+          intensity = 0.65;
+        } else if (distance < 0.15) {
+          // Medium distance
+          intensity = 0.45;
+        } else {
+          // Far - base brightness
+          intensity = 0.25;
+        }
+
+        // Smooth animation without native driver for web
         Animated.timing(dotAnimations[index], {
-          toValue: 0.3 + (proximity * 0.7), // Range from 0.3 to 1.0
-          duration: 50,
-          useNativeDriver: true,
+          toValue: intensity,
+          duration: 100, // Longer duration for smoother transitions
+          useNativeDriver: false, // Disable for web compatibility
         }).start();
       });
     };
 
-    const interval = setInterval(animateDots, 50);
+    const interval = setInterval(animateDots, 50); // Balanced update rate for smooth animation
     return () => clearInterval(interval);
   }, [running, beatPosition, dots, dotAnimations]);
 
@@ -91,10 +119,10 @@ const styles = StyleSheet.create({
   },
   line: {
     position: 'absolute',
-    height: 2,
+    height: 1,
     width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    top: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    top: 19.5,
   },
   dot: {
     position: 'absolute',
@@ -103,10 +131,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     top: 10,
     marginLeft: -10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
+    // Removed shadows for cleaner appearance
   },
 });

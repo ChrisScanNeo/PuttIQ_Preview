@@ -1,4 +1,4 @@
-import { Audio } from 'expo-av';
+import { Audio } from 'expo-audio';
 
 /**
  * Enhanced Metronome class with precise timing and local audio support
@@ -23,7 +23,7 @@ export class Metronome {
       // Configure audio mode for simultaneous playback and recording
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
-        interruptionModeIOS: 1, // Use numeric value: 1 = DO_NOT_MIX
+        interruptionModeIOS: Audio.InterruptionModeIOS.DoNotMix,
         shouldDuckAndroid: true,
         staysActiveInBackground: false,
         allowsRecordingIOS: true, // Important: allow recording while playing
@@ -31,21 +31,20 @@ export class Metronome {
       });
 
       // Load the local metronome sound
-      const { sound } = await Audio.Sound.createAsync(
+      this.sound = await Audio.Sound.createAsync(
         require('../../assets/sound/metronome-85688.mp3'),
-        { 
+        {
           volume: 0.7,
           shouldPlay: false,
           isLooping: false,
         }
       );
 
-      this.sound = sound;
       this.isLoaded = true;
-      
+
       // Preload the sound for instant playback
       await this.sound.setStatusAsync({ shouldPlay: false });
-      
+
       console.log('Metronome loaded successfully');
     } catch (error) {
       console.error('Failed to load metronome sound:', error);

@@ -13,7 +13,7 @@ import {
   ScrollView,
   Platform
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { Audio } from 'expo-audio';
 import { recordingManager } from '../services/audio/RecordingManager';
 import { profileBuilder } from '../services/profiles/ProfileBuilder';
 import { profileManager } from '../services/profiles/ProfileManager';

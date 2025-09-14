@@ -48,20 +48,13 @@ const SteppedGolfBall = ({
     }
   };
 
-  // Get current step based on beat position
-  const currentStep = calculateStep(beatPosition);
+  // Force static step 1 (white ball) - no animation based on beat position
+  const currentStep = 1; // Always show step 1 to prevent flashing
   
-  // Component mount logging
+  // Component mount
   useEffect(() => {
-    console.log('SteppedGolfBall mounted with size:', size);
     setImagesLoaded(true);
-    return () => console.log('SteppedGolfBall unmounted');
   }, []);
-
-  // Debug logging
-  useEffect(() => {
-    console.log('SteppedGolfBall - beatPosition:', beatPosition, 'currentStep:', currentStep);
-  }, [beatPosition, currentStep]);
 
   // Get color for hit quality feedback
   const getHitColor = () => {
@@ -155,8 +148,7 @@ const SteppedGolfBall = ({
             backgroundColor: currentStep === 10 ? '#FF6B6B' : `rgba(255, 107, 107, ${currentStep * 0.1})`,
             justifyContent: 'center',
             alignItems: 'center',
-            borderWidth: 2,
-            borderColor: '#333'
+            // Removed border for cleaner look
           }}>
             <Text style={{ color: 'white', fontSize: 20, fontWeight: 'bold' }}>{currentStep}</Text>
           </View>
@@ -166,29 +158,10 @@ const SteppedGolfBall = ({
             style={{ width: size, height: size }}
             resizeMode="contain"
             onError={(e) => {
-              console.error('Failed to load image for step', currentStep, e.nativeEvent.error);
               setImageError(`Failed to load step ${currentStep}`);
-            }}
-            onLoad={() => {
-              console.log('Successfully loaded image for step', currentStep);
             }}
           />
         )}
-        {/* Debug text - remove this after testing */}
-        <View style={{ 
-          position: 'absolute', 
-          top: -50, 
-          backgroundColor: 'white',
-          borderRadius: 5,
-          padding: 8,
-          borderWidth: 2,
-          borderColor: 'black',
-          zIndex: 100
-        }}>
-          <Text style={{ fontSize: 18, color: 'black', fontWeight: 'bold' }}>
-            Step: {currentStep} | Pos: {beatPosition.toFixed(2)}
-          </Text>
-        </View>
       </Animated.View>
 
       {/* Drop shadow for depth */}
@@ -228,7 +201,7 @@ const styles = StyleSheet.create({
   },
   ring: {
     position: 'absolute',
-    borderWidth: 3,
+    // borderWidth: 3, // Removed for cleaner look
     backgroundColor: 'transparent',
     zIndex: 10,
   },

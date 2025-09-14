@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Platform } from 'react-native';
 
 /**
  * Control bars with correct icon layout:
@@ -15,9 +15,10 @@ export default function ControlBars({ bpm, onBpmIncrease, onBpmDecrease, onMetro
           style={styles.section}
           onPress={onBpmDecrease}
         >
-          <Image 
-            source={require('../screens/icons/minus.png')} 
+          <Image
+            source={require('../screens/icons/minus.png')}
             style={styles.iconImage}
+            tintColor="#333"
             resizeMode="contain"
           />
         </TouchableOpacity>
@@ -34,9 +35,10 @@ export default function ControlBars({ bpm, onBpmIncrease, onBpmDecrease, onMetro
           style={styles.section}
           onPress={onBpmIncrease}
         >
-          <Image 
-            source={require('../screens/icons/plus-symbol-button.png')} 
+          <Image
+            source={require('../screens/icons/plus-symbol-button.png')}
             style={styles.iconImage}
+            tintColor="#333"
             resizeMode="contain"
           />
         </TouchableOpacity>
@@ -48,9 +50,10 @@ export default function ControlBars({ bpm, onBpmIncrease, onBpmDecrease, onMetro
           style={styles.section}
           onPress={onMetronome}
         >
-          <Image 
-            source={require('../screens/icons/metronome.png')} 
+          <Image
+            source={require('../screens/icons/metronome.png')}
             style={styles.iconImageLarge}
+            tintColor="#333"
             resizeMode="contain"
           />
         </TouchableOpacity>
@@ -61,9 +64,10 @@ export default function ControlBars({ bpm, onBpmIncrease, onBpmDecrease, onMetro
           style={styles.section}
           onPress={onMusic}
         >
-          <Image 
-            source={require('../screens/icons/musical-note.png')} 
+          <Image
+            source={require('../screens/icons/musical-note.png')}
             style={styles.iconImageLarge}
+            tintColor="#333"
             resizeMode="contain"
           />
         </TouchableOpacity>
@@ -74,9 +78,10 @@ export default function ControlBars({ bpm, onBpmIncrease, onBpmDecrease, onMetro
           style={styles.section}
           onPress={onWind}
         >
-          <Image 
-            source={require('../screens/icons/wind.png')} 
+          <Image
+            source={require('../screens/icons/wind.png')}
             style={styles.iconImageLarge}
+            tintColor="#333"
             resizeMode="contain"
           />
         </TouchableOpacity>
@@ -100,11 +105,18 @@ const styles = StyleSheet.create({
     height: 50,
     alignItems: 'center',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    ...Platform.select({
+      web: {
+        boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 5,
+      }
+    }),
   },
   bottomBar: {
     marginTop: 10,
@@ -123,12 +135,10 @@ const styles = StyleSheet.create({
   iconImage: {
     width: 20,
     height: 20,
-    tintColor: '#333',
   },
   iconImageLarge: {
     width: 24,
     height: 24,
-    tintColor: '#333',
   },
   bpmText: {
     fontSize: 18,

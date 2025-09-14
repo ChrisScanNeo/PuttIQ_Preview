@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-// Dynamic import for WebRTC to avoid issues on web platform
+// Dynamic import for WebRTC to avoid issues on web platform and Expo Go
 let mediaDevices = null;
 
 if (Platform.OS === 'ios' || Platform.OS === 'android') {
@@ -14,7 +14,7 @@ if (Platform.OS === 'ios' || Platform.OS === 'android') {
       const standardWebRTC = require('react-native-webrtc');
       mediaDevices = standardWebRTC.mediaDevices;
     } catch (err) {
-      console.warn('WebRTC not available:', err);
+      console.log('WebRTC not available (expected in Expo Go)');
     }
   }
 }

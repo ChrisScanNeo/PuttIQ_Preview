@@ -9,6 +9,7 @@ import {
   Dimensions,
   Text,
   Image,
+  Platform,
 } from 'react-native';
 
 // Components
@@ -19,6 +20,9 @@ import SteppedGolfBall from '../components/SteppedGolfBall';
 // Hooks
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector';
 
+// Services
+import { Metronome } from '../services/audio/Metronome';
+
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function HomeScreenMinimal({ user }) {
@@ -28,28 +32,133 @@ export default function HomeScreenMinimal({ user }) {
   const [hitFeedbackOpacity] = useState(new Animated.Value(0));
   const [currentHitQuality, setCurrentHitQuality] = useState(null);
   const [triggerPulse, setTriggerPulse] = useState(false);
+  const [detectionEnabled, setDetectionEnabled] = useState(false);
+  const [metronomeRunning, setMetronomeRunning] = useState(false);
+  const [metronomeBeatPosition, setMetronomeBeatPosition] = useState(0);
 
-  // Detection hook
-  const detector = usePuttIQDetector(bpm);
+  // Refs
+  const metronomeRef = useRef(null);
+  const beatAnimationRef = useRef(null);
+
+  // Detection hook - only initialize if detection is enabled
+  const detector = detectionEnabled ? usePuttIQDetector(bpm) : null;
   const {
     isInitialized,
     isRunning,
-    beatPosition,
+    beatPosition: detectorBeatPosition,
     lastHit,
-    start,
-    stop,
+    start: startDetector,
+    stop: stopDetector,
   } = detector || {};
+
+  // Use detector beat position if available, otherwise use metronome position
+  const beatPosition = detectionEnabled && detectorBeatPosition ? detectorBeatPosition : metronomeBeatPosition;
+
+  // Initialize metronome on mount
+  useEffect(() => {
+    const initMetronome = async () => {
+      try {
+        metronomeRef.current = new Metronome();
+        await metronomeRef.current.load();
+        metronomeRef.current.setBpm(bpm);
+        console.log('Standalone metronome initialized');
+      } catch (error) {
+        console.error('Failed to initialize metronome:', error);
+      }
+    };
+
+    initMetronome();
+
+    return () => {
+      if (metronomeRef.current) {
+        metronomeRef.current.stop();
+        metronomeRef.current.dispose();
+      }
+    };
+  }, []);
+
+  // Update metronome BPM
+  useEffect(() => {
+    if (metronomeRef.current) {
+      metronomeRef.current.setBpm(bpm);
+    }
+  }, [bpm]);
+
+  // Animate beat position when metronome is running
+  useEffect(() => {
+    if (metronomeRunning && !detectionEnabled) {
+      const period = 60000 / bpm;
+      let startTime = Date.now();
+
+      // Use interval instead of requestAnimationFrame to avoid excessive re-renders
+      const intervalId = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const cyclePosition = (elapsed % (period * 2)) / period; // Double period for back-and-forth
+
+        // Create bidirectional movement: 0→1→0
+        let position;
+        if (cyclePosition <= 1) {
+          // First half: moving right (0 to 1)
+          position = cyclePosition;
+        } else {
+          // Second half: moving left (1 to 0)
+          position = 2 - cyclePosition;
+        }
+
+        setMetronomeBeatPosition(position);
+      }, 50); // Update every 50ms (20fps) instead of 60fps
+
+      return () => {
+        clearInterval(intervalId);
+      };
+    } else {
+      setMetronomeBeatPosition(0);
+    }
+  }, [metronomeRunning, bpm, detectionEnabled]);
 
   // Calculate if in listening zone
   const inListeningZone = isRunning && beatPosition >= 0.2 && beatPosition <= 0.8;
 
   // Handle play/pause
-  const handlePlayPause = () => {
-    if (isRunning) {
-      stop();
+  const handlePlayPause = async () => {
+    if (detectionEnabled) {
+      // If detection is on, use detector
+      if (isRunning) {
+        stopDetector();
+      } else {
+        startDetector();
+      }
     } else {
-      start();
+      // Use standalone metronome
+      if (metronomeRunning) {
+        if (metronomeRef.current) {
+          metronomeRef.current.stop();
+        }
+        setMetronomeRunning(false);
+        setMetronomeBeatPosition(0);
+      } else {
+        if (metronomeRef.current) {
+          await metronomeRef.current.start();
+        }
+        setMetronomeRunning(true);
+      }
     }
+  };
+
+  // Toggle detection on/off
+  const toggleDetection = () => {
+    // Stop metronome if running
+    if (metronomeRunning && metronomeRef.current) {
+      metronomeRef.current.stop();
+      setMetronomeRunning(false);
+    }
+
+    // Stop detector if running
+    if (detectionEnabled && isRunning) {
+      stopDetector();
+    }
+
+    setDetectionEnabled(!detectionEnabled);
   };
 
   // Handle BPM changes
@@ -63,10 +172,13 @@ export default function HomeScreenMinimal({ user }) {
 
   // Update detector BPM when it changes
   useEffect(() => {
-    if (detector?.setBpm) {
-      detector.setBpm(bpm);
+    if (detector?.updateBpm) {
+      detector.updateBpm(bpm);
     }
-  }, [bpm]);
+  }, [bpm, detector]);
+
+  // Check if practice is active (either metronome or detector)
+  const isPracticeActive = metronomeRunning || isRunning;
 
   // Handle hit feedback
   useEffect(() => {
@@ -125,20 +237,23 @@ export default function HomeScreenMinimal({ user }) {
           {/* Colored dots indicator at top */}
           <ColoredDotsIndicator
             periodMs={60000 / bpm}
-            running={isRunning}
+            running={isPracticeActive}
             beatPosition={beatPosition || 0}
           />
 
-          {/* Golf ball between slider and control bars */}
+          {/* Golf ball - centered and maximized between top bar and bottom controls */}
           <View style={styles.golfBallSection}>
             <TouchableOpacity
               onPress={handlePlayPause}
-              activeOpacity={0.95}
-              style={styles.golfBallTouch}
+              activeOpacity={0.9}
+              style={styles.golfBallTouchArea}
             >
               <SteppedGolfBall
-                size={200}
-                beatPosition={beatPosition}
+                size={Platform.OS === 'web'
+                  ? Math.min(screenWidth * 0.4, screenHeight * 0.8, 400)
+                  : Math.min(screenWidth * 0.6, screenHeight * 0.7, 350)
+                }
+                beatPosition={beatPosition || 0}
                 isHit={triggerPulse}
                 hitQuality={currentHitQuality}
               />
@@ -174,11 +289,20 @@ export default function HomeScreenMinimal({ user }) {
             onWind={() => console.log('Wind toggled')}
           />
 
+          {/* Bottom left instruction text */}
+          <View style={styles.instructionContainer}>
+            <View style={styles.instructionBox}>
+              <Text style={styles.instructionText}>
+                {isPracticeActive ? 'Click ball to stop' : 'Click ball to start'}
+              </Text>
+            </View>
+          </View>
+
           {/* Corner indicators */}
-          {/* Metronome icon - bottom left */}
-          {isRunning && (
+          {/* Metronome icon - bottom left (shows when practice is active) */}
+          {isPracticeActive && (
             <View style={styles.metronomeIndicator}>
-              <Image 
+              <Image
                 source={require('../screens/icons/metronome.png')}
                 style={styles.cornerIcon}
                 resizeMode="contain"
@@ -186,16 +310,19 @@ export default function HomeScreenMinimal({ user }) {
             </View>
           )}
 
-          {/* Wind icon - bottom right */}
-          {false && ( // Set to true when wind feature is active
-            <View style={styles.windIndicator}>
-              <Image 
-                source={require('../screens/icons/wind.png')}
-                style={styles.cornerIcon}
-                resizeMode="contain"
-              />
+          {/* Detection toggle - bottom right */}
+          <TouchableOpacity
+            style={styles.detectionToggle}
+            onPress={toggleDetection}
+            activeOpacity={0.7}
+          >
+            <View style={[
+              styles.detectionButton,
+              detectionEnabled && styles.detectionButtonActive
+            ]}>
+              <Text style={styles.detectionIcon}>🎤</Text>
             </View>
-          )}
+          </TouchableOpacity>
         </SafeAreaView>
       </ImageBackground>
     </View>
@@ -220,15 +347,16 @@ const styles = StyleSheet.create({
   },
   golfBallSection: {
     position: 'absolute',
-    top: '35%',
+    top: 90,
+    bottom: 140, // Moved up to have 10px padding from control buttons
     left: 0,
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 10,
   },
-  golfBallTouch: {
-    padding: 10,
+  golfBallTouchArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   hitFeedback: {
     position: 'absolute',
@@ -243,9 +371,38 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
   },
+  instructionContainer: {
+    position: 'absolute',
+    bottom: 35,
+    left: 30,
+  },
+  instructionBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    ...Platform.select({
+      web: {
+        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+      }
+    }),
+  },
+  instructionText: {
+    color: '#333',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
   metronomeIndicator: {
     position: 'absolute',
-    bottom: 30,
+    bottom: 70,
     left: 30,
   },
   windIndicator: {
@@ -257,9 +414,49 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     tintColor: '#FFD93D',
-    shadowColor: '#FFD93D',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 10,
-    shadowOpacity: 0.5,
+    ...Platform.select({
+      web: {
+        filter: 'drop-shadow(0px 0px 10px rgba(255, 217, 61, 0.5))',
+      },
+      default: {
+        shadowColor: '#FFD93D',
+        shadowOffset: { width: 0, height: 0 },
+        shadowRadius: 10,
+        shadowOpacity: 0.5,
+      }
+    }),
+  },
+  detectionToggle: {
+    position: 'absolute',
+    bottom: 30,
+    right: 30,
+    zIndex: 100,
+  },
+  detectionButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)', // White background for visibility
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      web: {
+        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+      }
+    }),
+  },
+  detectionButtonActive: {
+    backgroundColor: 'rgba(76, 175, 80, 0.8)',
+    // Removed border for cleaner look
+  },
+  detectionIcon: {
+    fontSize: 24,
   },
 });

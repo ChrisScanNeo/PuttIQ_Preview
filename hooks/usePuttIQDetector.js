@@ -1,9 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import { request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { Metronome } from '../services/audio/Metronome';
-import { enableAEC, disableAEC, isAECSupported } from '../services/audio/enableAEC';
 import { DetectorFactory } from '../services/dsp/DetectorFactory';
+
+// Conditionally import native modules for Expo Go compatibility
+let request, PERMISSIONS, RESULTS;
+let enableAEC, disableAEC, isAECSupported;
+
+try {
+  const permissions = require('react-native-permissions');
+  request = permissions.request;
+  PERMISSIONS = permissions.PERMISSIONS;
+  RESULTS = permissions.RESULTS;
+} catch (e) {
+  console.log('react-native-permissions not available, using fallback');
+  // Fallback for Expo Go
+  request = async () => 'granted';
+  PERMISSIONS = { IOS: { MICROPHONE: null }, ANDROID: { RECORD_AUDIO: null } };
+  RESULTS = { GRANTED: 'granted', UNAVAILABLE: 'unavailable' };
+}
+
+try {
+  const aec = require('../services/audio/enableAEC');
+  enableAEC = aec.enableAEC;
+  disableAEC = aec.disableAEC;
+  isAECSupported = aec.isAECSupported;
+} catch (e) {
+  console.log('AEC module not available, using fallback');
+  // Fallback for Expo Go
+  enableAEC = async () => null;
+  disableAEC = () => {};
+  isAECSupported = () => false;
+}
 
 /**
  * Enhanced PuttIQ detector hook using improved DSP services
@@ -21,7 +49,7 @@ export function usePuttIQDetector(defaultBpm = 30) {
   const [detectorStats, setDetectorStats] = useState(null);
   const [beatPosition, setBeatPosition] = useState(0);
   const [hitHistory, setHitHistory] = useState([]);
-  const [debugMode, setDebugMode] = useState(true); // Enable debug mode by default for testing
+  const [debugMode, setDebugMode] = useState(false); // Debug mode off by default
 
   // Service references
   const metronomeRef = useRef(null);
@@ -69,15 +97,10 @@ export function usePuttIQDetector(defaultBpm = 30) {
           // Continue without metronome if it fails
         }
 
-        // Request microphone permission
-        const permissionStatus = await requestMicrophonePermission();
-        if (mounted) setPermissionGranted(permissionStatus);
-
-        if (!permissionStatus) {
-          console.warn('Microphone permission denied');
-          // Still mark as initialized even without mic permission
-          if (mounted) setInitialized(true);
-          return;
+        // Don't request microphone permission on initialization
+        // It will be requested when start() is called
+        if (mounted) {
+          setPermissionGranted(false); // Default to false
         }
 
         // Initialize detector using factory
@@ -90,8 +113,8 @@ export function usePuttIQDetector(defaultBpm = 30) {
             zcrThresh: 0.10,       // Very low threshold for putter detection
             tickGuardMs: 50,       // Smaller guard since we have listening zone
             useProfiles: true,     // Explicitly enable profile-based detection
-            debugMode: debugMode,  // Enable debug logging
-            calibrationMode: debugMode, // Use calibration mode when debugging
+            debugMode: false,      // Debug logging off by default
+            calibrationMode: false, // Calibration mode off by default
             audioGain: 85,         // Reduced by 30% from 120 for optimal detection
             
             // Listening zone configuration - only detect in middle portion of beat
@@ -217,7 +240,7 @@ export function usePuttIQDetector(defaultBpm = 30) {
 
       const result = await request(permission);
       console.log('Microphone permission result:', result);
-      return result === RESULTS.GRANTED || result === RESULTS.UNAVAILABLE; // UNAVAILABLE means not needed on this platform
+      return result === 'granted' || result === RESULTS.GRANTED || result === RESULTS.UNAVAILABLE; // UNAVAILABLE means not needed on this platform
     } catch (error) {
       console.error('Failed to request microphone permission:', error);
       // Try to continue anyway in case it's a permission library issue
@@ -229,9 +252,20 @@ export function usePuttIQDetector(defaultBpm = 30) {
    * Start detection and metronome
    */
   const start = useCallback(async () => {
-    if (isRunning || !isInitialized || !permissionGranted) {
-      console.warn('Cannot start:', { isRunning, isInitialized, permissionGranted });
+    if (isRunning || !isInitialized) {
+      console.warn('Cannot start:', { isRunning, isInitialized });
       return;
+    }
+
+    // Request permission if not already granted
+    if (!permissionGranted) {
+      const permissionStatus = await requestMicrophonePermission();
+      setPermissionGranted(permissionStatus);
+
+      if (!permissionStatus) {
+        console.warn('Microphone permission denied');
+        return;
+      }
     }
 
     try {

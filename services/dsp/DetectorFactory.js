@@ -50,7 +50,7 @@ export class DetectorFactory {
         return 'expo';
       }
     } catch (e) {
-      console.log('ExpoPlayAudioStream not available:', e.message);
+      console.log('ExpoPlayAudioStream not available (expected in Expo Go)');
     }
 
     // Try to load Picovoice (requires native linking)
@@ -60,11 +60,13 @@ export class DetectorFactory {
         return 'picovoice';
       }
     } catch (e) {
-      console.log('Picovoice not available:', e.message);
+      console.log('Picovoice not available (expected in Expo Go)');
     }
 
     // Fallback to simple detector for basic functionality
+    // This will work in Expo Go
     if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      console.log('Using simple detector for Expo Go compatibility');
       return 'simple';
     }
 

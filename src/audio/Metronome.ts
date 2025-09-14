@@ -1,4 +1,4 @@
-import { Audio, AVPlaybackStatus } from 'expo-av';
+import { Audio } from 'expo-audio';
 
 // Simple sample player. Use very short "tick" sample (5–20 ms) for crisp timing.
 export class Metronome {

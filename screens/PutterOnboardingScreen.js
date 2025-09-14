@@ -9,7 +9,7 @@ import {
   Animated,
   Platform
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { Audio } from 'expo-audio';
 import { profileBuilder } from '../services/profiles/ProfileBuilder';
 import { DetectorFactory } from '../services/dsp/DetectorFactory';
 

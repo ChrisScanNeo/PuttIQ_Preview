@@ -1,8 +1,8 @@
-import { Audio } from 'expo-av';
+import { Audio } from 'expo-audio';
 
 /**
  * RecordingManager - Handles timed audio recording for putt calibration
- * Uses expo-av to record precise 1-second segments
+ * Uses expo-audio to record precise 1-second segments
  */
 class RecordingManager {
   constructor() {
@@ -11,16 +11,16 @@ class RecordingManager {
     this.recordingSettings = {
       android: {
         extension: '.m4a',
-        outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-        audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+        outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+        audioEncoder: Audio.AndroidAudioEncoder.AAC,
         sampleRate: 16000,
         numberOfChannels: 1,
         bitRate: 128000,
       },
       ios: {
         extension: '.m4a',
-        outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
-        audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+        outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+        audioQuality: Audio.IOSAudioQuality.HIGH,
         sampleRate: 16000,
         numberOfChannels: 1,
         bitRate: 128000,
