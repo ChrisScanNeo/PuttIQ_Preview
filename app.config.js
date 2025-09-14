@@ -44,9 +44,10 @@ export default {
             deploymentTarget: "16.0"
           }
         }
-      ],
-      "./plugins/withIOSAudioSession",
-      "expo-dev-client"
+      ]
+      // Commented out for Expo Go compatibility:
+      // "./plugins/withIOSAudioSession",
+      // "expo-dev-client"
     ],
     extra: {
       eas: {
