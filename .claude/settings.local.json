@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx expo start:*)",
-      "Bash(npx kill-port:*)"
+      "Bash(npx kill-port:*)",
+      "Bash(npm install:*)",
+      "WebFetch(domain:docs.expo.dev)"
     ],
     "deny": [],
     "ask": []

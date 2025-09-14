@@ -4,13 +4,13 @@ import {
   View,
   TouchableOpacity,
   ImageBackground,
-  SafeAreaView,
   Animated,
   Dimensions,
   Text,
   Image,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Components
 import ColoredDotsIndicator from '../components/ColoredDotsIndicator';

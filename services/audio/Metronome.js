@@ -1,4 +1,4 @@
-import { Audio } from 'expo-audio';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 
 /**
  * Enhanced Metronome class with precise timing and local audio support
@@ -21,29 +21,18 @@ export class Metronome {
   async load() {
     try {
       // Configure audio mode for simultaneous playback and recording
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        interruptionModeIOS: Audio.InterruptionModeIOS.DoNotMix,
-        shouldDuckAndroid: true,
-        staysActiveInBackground: false,
-        allowsRecordingIOS: true, // Important: allow recording while playing
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: true, // Important: allow recording while playing
+        interruptionMode: 'mixWithOthers',
+        shouldPlayInBackground: false,
       });
 
-      // Load the local metronome sound
-      this.sound = await Audio.Sound.createAsync(
-        require('../../assets/sound/metronome-85688.mp3'),
-        {
-          volume: 0.7,
-          shouldPlay: false,
-          isLooping: false,
-        }
-      );
+      // Load the local metronome sound using the new API
+      this.sound = createAudioPlayer(require('../../assets/sound/metronome-85688.mp3'));
+      this.sound.volume = 0.7;
 
       this.isLoaded = true;
-
-      // Preload the sound for instant playback
-      await this.sound.setStatusAsync({ shouldPlay: false });
 
       console.log('Metronome loaded successfully');
     } catch (error) {
@@ -96,8 +85,9 @@ export class Metronome {
       // Check if it's time for the next tick (with 5ms tolerance)
       if (now >= this.nextTickAt - 5) {
         try {
-          // Play the tick sound
-          await this.sound.replayAsync();
+          // Play the tick sound - reset to start and play
+          this.sound.seekTo(0);
+          this.sound.play();
         } catch (error) {
           console.warn('Failed to play tick:', error);
         }
@@ -174,9 +164,9 @@ export class Metronome {
    */
   async setVolume(volume) {
     if (!this.sound) return;
-    
+
     try {
-      await this.sound.setVolumeAsync(Math.max(0, Math.min(1, volume)));
+      this.sound.volume = Math.max(0, Math.min(1, volume));
     } catch (error) {
       console.warn('Failed to set volume:', error);
     }
@@ -190,9 +180,9 @@ export class Metronome {
     
     if (this.sound) {
       try {
-        await this.sound.unloadAsync();
+        this.sound.release();
       } catch (error) {
-        console.warn('Failed to unload sound:', error);
+        console.warn('Failed to release sound:', error);
       }
       this.sound = null;
     }
