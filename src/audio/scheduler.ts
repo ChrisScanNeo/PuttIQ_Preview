@@ -1,194 +1,87 @@
-import { AudioEngine, AudioMode } from './audioEngine';
-import { simpleAccent, musicalSequence, windMode } from './metronomePatterns';
 
-/**
- * Master clock using performance.now() for precise timing
- */
+// scheduler.ts — shared master clock + helpers
+
 export function nowMs(): number {
-  // Use performance.now() if available, fallback to Date.now()
-  if (typeof performance !== 'undefined' && performance.now) {
-    // performance.now() returns time since page load, add offset to get absolute time
-    const pageLoadTime = Date.now() - performance.now();
-    return pageLoadTime + performance.now();
-  }
+  // Prefer monotonic clock
+  if (typeof performance !== 'undefined' && performance.now) return performance.now();
   return Date.now();
 }
 
-type RunArgs = {
+import type { AudioEngine, SpriteName } from './audioEngine';
+
+export type RunArgs = {
   bpm: number;
   bars: number;
   beatsPerBar: number;
-  mode: AudioMode;
-  startDelay?: number; // Optional delay before starting (ms)
+  mode: 'metronome' | 'tones' | 'wind';
+  // optional per-device latency offsets (ms)
+  outputLatencyMs?: number;
 };
 
-export class Scheduler {
-  private audio: AudioEngine;
-  private currentSequence: any = null;
-  private startTime: number = 0;
-  private bpm: number = 80;
-  private beatsPerBar: number = 4;
-  private isRunning: boolean = false;
-
-  constructor(audioEngine: AudioEngine) {
-    this.audio = audioEngine;
-  }
-
-  /**
-   * Start a sequence with the given parameters
-   */
-  async runSequence(args: RunArgs) {
-    const { bpm, bars, beatsPerBar, mode, startDelay = 500 } = args;
-
-    this.bpm = bpm;
-    this.beatsPerBar = beatsPerBar;
-    this.isRunning = true;
-
-    const spb = 60000 / bpm; // ms per beat
-    const t0 = nowMs() + startDelay; // Start after delay
-    this.startTime = t0;
-    const totalBeats = bars * beatsPerBar;
-
-    // Clear any existing queue
-    this.audio.clearQueue();
-    this.audio.setMode(mode);
-
-    // Schedule beats based on mode
-    if (mode === 'metronome') {
-      this.scheduleMetronomeBeats(t0, totalBeats, spb, beatsPerBar);
-    } else if (mode === 'tones') {
-      this.scheduleTonesBeats(t0, totalBeats, spb, beatsPerBar);
-    } else if (mode === 'wind') {
-      this.scheduleWindBeats(t0, totalBeats, spb, beatsPerBar);
-    }
-
-    // Start the audio engine
-    await this.audio.start();
-  }
-
-  /**
-   * Schedule metronome mode beats (Low-Low-High pattern)
-   */
-  private scheduleMetronomeBeats(t0: number, totalBeats: number, spb: number, beatsPerBar: number) {
-    const pattern = simpleAccent(beatsPerBar);
-
-    for (let beat = 0; beat < totalBeats; beat++) {
-      const beatTime = t0 + beat * spb;
-      const patternEvent = pattern[beat % pattern.length];
-
-      this.audio.enqueue({
-        id: `beat_${beat}`,
-        clip: patternEvent.clip,
-        tStartMs: beatTime,
-        gainDb: patternEvent.gainDb || 0,
-      });
-    }
-  }
-
-  /**
-   * Schedule musical tones beats
-   */
-  private scheduleTonesBeats(t0: number, totalBeats: number, spb: number, beatsPerBar: number) {
-    // Create a musical sequence using available tones
-    const sequences = [
-      ['tone1', 'tone3', 'tone5', 'tone8'],  // Ascending
-      ['tone8', 'tone5', 'tone3', 'tone1'],  // Descending
-      ['tone1', 'tone4', 'tone7', 'tone10'], // Major chord tones
-      ['tone2', 'tone6', 'tone9', 'tone13'], // Alternative sequence
-    ];
-
-    // Pick a sequence (could be user-selectable later)
-    const selectedSequence = sequences[0];
-    const pattern = musicalSequence(selectedSequence, beatsPerBar);
-
-    for (let beat = 0; beat < totalBeats; beat++) {
-      const beatTime = t0 + beat * spb;
-      const patternEvent = pattern[beat % pattern.length];
-
-      this.audio.enqueue({
-        id: `tone_${beat}`,
-        clip: patternEvent.clip,
-        tStartMs: beatTime,
-        gainDb: patternEvent.gainDb || 0,
-      });
-    }
-  }
-
-  /**
-   * Schedule wind mode beats (clicks over continuous wind)
-   */
-  private scheduleWindBeats(t0: number, totalBeats: number, spb: number, beatsPerBar: number) {
-    const pattern = windMode(beatsPerBar);
-
-    for (let beat = 0; beat < totalBeats; beat++) {
-      const beatTime = t0 + beat * spb;
-      const patternEvent = pattern[beat % pattern.length];
-
-      this.audio.enqueue({
-        id: `wind_${beat}`,
-        clip: patternEvent.clip,
-        tStartMs: beatTime,
-        gainDb: patternEvent.gainDb || -6, // Quieter clicks for wind mode
-      });
-    }
-  }
-
-  /**
-   * Stop the current sequence
-   */
-  async stop() {
-    this.isRunning = false;
-    await this.audio.stop();
-  }
-
-  /**
-   * Get current position in beat cycle (0-1)
-   */
-  getBeatPosition(): number {
-    if (!this.isRunning || !this.startTime) return 0;
-
-    const now = nowMs();
-    const elapsed = now - this.startTime;
-    const spb = 60000 / this.bpm;
-    const cycleDuration = spb * 2; // For bidirectional movement
-
-    const cyclePosition = (elapsed % cycleDuration) / cycleDuration;
-
-    // Create bidirectional position (0→1→0)
-    if (cyclePosition <= 0.5) {
-      return cyclePosition * 2; // 0 to 1
-    } else {
-      return 2 - cyclePosition * 2; // 1 to 0
-    }
-  }
-
-  /**
-   * Get the absolute start time of the sequence
-   */
-  getStartTime(): number {
-    return this.startTime;
-  }
-
-  /**
-   * Check if scheduler is running
-   */
-  getIsRunning(): boolean {
-    return this.isRunning;
-  }
-
-  /**
-   * Get current BPM
-   */
-  getBpm(): number {
-    return this.bpm;
-  }
-
-  /**
-   * Update BPM (requires restart to take effect)
-   */
-  setBpm(bpm: number) {
-    this.bpm = bpm;
-  }
+function modeToSprite(mode: RunArgs['mode']): SpriteName {
+  if (mode === 'wind') return 'wind';
+  if (mode === 'tones') return 'tones';
+  return 'metronome';
 }
 
-export default Scheduler;
+function pickClipFor(mode: RunArgs['mode'], beatIndex: number, beatsPerBar: number): string {
+  if (mode === 'metronome') {
+    const withinBar = beatIndex % beatsPerBar;
+    const isDownbeat = withinBar === 0;
+    const isCenter = withinBar === Math.floor(beatsPerBar / 2);
+    if (isDownbeat) return 'low1';
+    if (isCenter)   return 'high';
+    return 'tick1';
+  }
+  if (mode === 'tones') {
+    const seq = ['tone1','tone3','tone5','tone8']; // example tone mapping
+    return seq[beatIndex % seq.length];
+  }
+  // wind mode uses click accents
+  return 'click';
+}
+
+export function runSequence(audio: AudioEngine, args: RunArgs) {
+  const { bpm, bars, beatsPerBar, mode, outputLatencyMs = 0 } = args;
+  const totalBeats = Math.max(1, Math.floor(bars * beatsPerBar));
+  const spb = 60_000 / bpm; // ms per beat
+
+  console.log('[Scheduler] Starting sequence:', {
+    bpm,
+    bars,
+    beatsPerBar,
+    mode,
+    totalBeats,
+    spb: `${spb}ms per beat`
+  });
+
+  const t0 = nowMs() + 600; // start a bit in the future
+  const sprite = modeToSprite(mode);
+  console.log(`[Scheduler] Using sprite: ${sprite}, starting at t0=${t0}`);
+
+  // Continuous bed for wind (optional: schedule loops yourself if needed)
+  if (mode === 'wind') {
+    // For wind beds we might separately start looping layers; omitted here for brevity.
+  }
+
+  for (let i = 0; i < totalBeats; i++) {
+    const beatTime = t0 + i * spb - outputLatencyMs;
+    const clip = pickClipFor(mode, i, beatsPerBar);
+    if (i < 5) { // Only log first 5 beats to avoid spam
+      console.log(`[Scheduler] Enqueuing beat ${i}: clip=${clip}, time=${beatTime}ms`);
+    }
+    audio.enqueue({
+      id: `beat-${i}`,
+      sprite,
+      clip,
+      tStartMs: beatTime,
+    });
+  }
+
+  console.log('[Scheduler] All beats enqueued, starting audio engine');
+  audio.start();
+}
+
+export function stopSequence(audio: AudioEngine) {
+  audio.stop();
+}

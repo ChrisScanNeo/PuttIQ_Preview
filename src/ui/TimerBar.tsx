@@ -1,11 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Animated, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 type Props = {
   bpm: number;
   isRunning: boolean;
-  startTime?: number;
+  startTime?: number | null;
   sweep?: 'pingpong' | 'loop';
 };
 
@@ -13,13 +13,15 @@ const { width: screenWidth } = Dimensions.get('window');
 
 export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong' }: Props) {
   const animValue = useRef(new Animated.Value(0)).current;
-  const animRef = useRef<Animated.CompositeAnimation | null>(null);
+  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
-    // Stop any existing animation
-    if (animRef.current) {
-      animRef.current.stop();
-      animRef.current = null;
+    // Clean up any existing animation
+    if (animationRef.current) {
+      animationRef.current.stop();
+      animationRef.current = null;
+      setIsAnimating(false);
     }
 
     if (!isRunning) {
@@ -31,6 +33,7 @@ export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong'
     const spb = 60000 / bpm; // ms per beat
 
     // Calculate initial position if startTime is provided
+    let initialValue = 0;
     if (startTime) {
       const elapsed = Date.now() - startTime;
       const cycles = elapsed / (spb * 2); // Each cycle is 2 beats (back and forth)
@@ -39,23 +42,26 @@ export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong'
       // Set initial position based on elapsed time
       if (sweep === 'pingpong') {
         if (fractionalCycle <= 0.5) {
-          animValue.setValue(fractionalCycle * 2);
+          initialValue = fractionalCycle * 2;
         } else {
-          animValue.setValue(2 - fractionalCycle * 2);
+          initialValue = 2 - fractionalCycle * 2;
         }
       } else {
-        animValue.setValue(fractionalCycle);
+        initialValue = fractionalCycle;
       }
     }
 
-    // Create animation based on sweep type
+    // Set initial value
+    animValue.setValue(initialValue);
+
+    // Create stable animation
     const createAnimation = () => {
       if (sweep === 'pingpong') {
         // Back and forth animation
         return Animated.sequence([
           Animated.timing(animValue, {
             toValue: 1,
-            duration: spb,
+            duration: spb * (1 - initialValue), // Adjust for starting position
             useNativeDriver: true,
           }),
           Animated.timing(animValue, {
@@ -66,30 +72,67 @@ export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong'
         ]);
       } else {
         // Loop animation (0 to 1, then jump back to 0)
-        return Animated.sequence([
-          Animated.timing(animValue, {
-            toValue: 1,
-            duration: spb * 2,
-            useNativeDriver: true,
-          }),
-          Animated.timing(animValue, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ]);
+        return Animated.timing(animValue, {
+          toValue: 1,
+          duration: spb * 2 * (1 - initialValue), // Adjust for starting position
+          useNativeDriver: true,
+        });
       }
     };
 
-    // Start repeating animation
-    animRef.current = Animated.loop(createAnimation());
-    animRef.current.start();
+    // Start the initial animation
+    const firstAnimation = createAnimation();
+
+    // Then create the repeating animation
+    const repeatingAnimation = () => {
+      if (sweep === 'pingpong') {
+        return Animated.loop(
+          Animated.sequence([
+            Animated.timing(animValue, {
+              toValue: 1,
+              duration: spb,
+              useNativeDriver: true,
+            }),
+            Animated.timing(animValue, {
+              toValue: 0,
+              duration: spb,
+              useNativeDriver: true,
+            }),
+          ])
+        );
+      } else {
+        return Animated.loop(
+          Animated.sequence([
+            Animated.timing(animValue, {
+              toValue: 1,
+              duration: spb * 2,
+              useNativeDriver: true,
+            }),
+            Animated.timing(animValue, {
+              toValue: 0,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ])
+        );
+      }
+    };
+
+    // Run first animation, then start looping
+    setIsAnimating(true);
+    firstAnimation.start(({ finished }) => {
+      if (finished && isRunning) {
+        animationRef.current = repeatingAnimation();
+        animationRef.current.start();
+      }
+    });
 
     return () => {
-      if (animRef.current) {
-        animRef.current.stop();
-        animRef.current = null;
+      if (animationRef.current) {
+        animationRef.current.stop();
+        animationRef.current = null;
       }
+      setIsAnimating(false);
     };
   }, [bpm, isRunning, startTime, sweep]);
 

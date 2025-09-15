@@ -22,9 +22,8 @@ import { usePuttIQDetector } from '../hooks/usePuttIQDetector';
 
 // New Audio System
 import { AudioEngine } from '../src/audio/audioEngine';
-import { Scheduler } from '../src/audio/scheduler';
+import { runSequence, stopSequence } from '../src/audio/scheduler';
 import TimerBar from '../src/ui/TimerBar';
-import ModeSwitcher from '../src/ui/ModeSwitcher';
 import { loadAudioSettings, saveAudioSettings } from '../src/state/audioSettings';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -44,7 +43,6 @@ export default function HomeScreenMinimal({ user }) {
 
   // Refs
   const audioEngineRef = useRef(null);
-  const schedulerRef = useRef(null);
   const beatAnimationRef = useRef(null);
 
   // Detection hook - only initialize if detection is enabled
@@ -70,11 +68,9 @@ export default function HomeScreenMinimal({ user }) {
         setBpm(settings.bpm);
         setAudioMode(settings.mode);
 
-        // Initialize audio engine and scheduler
+        // Initialize audio engine
         audioEngineRef.current = new AudioEngine();
         await audioEngineRef.current.init();
-
-        schedulerRef.current = new Scheduler(audioEngineRef.current);
 
         console.log('New audio engine initialized successfully');
       } catch (error) {
@@ -87,6 +83,7 @@ export default function HomeScreenMinimal({ user }) {
     return () => {
       if (audioEngineRef.current) {
         audioEngineRef.current.stop();
+        audioEngineRef.current.destroy();
       }
     };
   }, []);
@@ -143,22 +140,21 @@ export default function HomeScreenMinimal({ user }) {
     } else {
       // Use new audio engine
       if (metronomeRunning) {
-        if (schedulerRef.current) {
-          await schedulerRef.current.stop();
+        if (audioEngineRef.current) {
+          stopSequence(audioEngineRef.current);
         }
         setMetronomeRunning(false);
         setMetronomeBeatPosition(0);
         setStartTime(null);
       } else {
-        if (schedulerRef.current) {
+        if (audioEngineRef.current) {
           const now = Date.now();
           setStartTime(now);
-          await schedulerRef.current.runSequence({
+          runSequence(audioEngineRef.current, {
             bpm,
             bars: 100,
             beatsPerBar: 4,
             mode: audioMode,
-            startDelay: 500,
           });
         }
         setMetronomeRunning(true);
@@ -169,8 +165,8 @@ export default function HomeScreenMinimal({ user }) {
   // Toggle detection on/off
   const toggleDetection = () => {
     // Stop audio engine if running
-    if (metronomeRunning && schedulerRef.current) {
-      schedulerRef.current.stop();
+    if (metronomeRunning && audioEngineRef.current) {
+      stopSequence(audioEngineRef.current);
       setMetronomeRunning(false);
       setStartTime(null);
     }
@@ -256,14 +252,7 @@ export default function HomeScreenMinimal({ user }) {
         resizeMode="cover"
       >
         <SafeAreaView style={styles.safeArea}>
-          {/* Mode switcher at top */}
-          <ModeSwitcher
-            currentMode={audioMode}
-            onModeChange={setAudioMode}
-            disabled={metronomeRunning}
-          />
-
-          {/* New Timer bar instead of dots */}
+          {/* New Timer bar at top */}
           <TimerBar
             bpm={bpm}
             isRunning={metronomeRunning}
@@ -312,11 +301,27 @@ export default function HomeScreenMinimal({ user }) {
           {/* Control bars */}
           <ControlBars
             bpm={bpm}
+            currentMode={audioMode}
             onBpmIncrease={handleBpmIncrease}
             onBpmDecrease={handleBpmDecrease}
-            onMetronome={() => !metronomeRunning && setAudioMode('metronome')}
-            onMusic={() => !metronomeRunning && setAudioMode('tones')}
-            onWind={() => !metronomeRunning && setAudioMode('wind')}
+            onMetronome={() => {
+              if (!metronomeRunning) {
+                setAudioMode('metronome');
+                saveAudioSettings({ mode: 'metronome' });
+              }
+            }}
+            onMusic={() => {
+              if (!metronomeRunning) {
+                setAudioMode('tones');
+                saveAudioSettings({ mode: 'tones' });
+              }
+            }}
+            onWind={() => {
+              if (!metronomeRunning) {
+                setAudioMode('wind');
+                saveAudioSettings({ mode: 'wind' });
+              }
+            }}
           />
 
           {/* Bottom left instruction text */}

@@ -1,240 +1,201 @@
-import { Audio, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
-import { Platform } from 'react-native';
+
+// audioEngine.ts — Expo SDK 54 / expo-audio
+// Cross‑platform (iOS + Android) sprite playback with player pool, warmup, and look‑ahead scheduling.
+
+import { setAudioModeAsync, createAudioPlayer } from 'expo-audio';
 import { nowMs } from './scheduler';
 import { loadSprite } from './spriteLoader';
 
-type ScheduledNote = {
+export type SpriteName = 'metronome' | 'tones' | 'wind';
+
+export type ClipEvent = {
   id: string;
-  clip: string;         // key in sprite JSON
-  tStartMs: number;     // absolute clock time to start
-  gainDb?: number;
+  sprite: SpriteName;
+  clip: string;         // key from sprite JSON
+  tStartMs: number;     // absolute time to start
+  gain?: number;        // 0..1 (linear), optional
 };
 
-export type AudioMode = 'metronome' | 'tones' | 'wind';
+type ClipDef = { start: number; duration: number; gain?: number; loop?: boolean };
+
+type Sprite = {
+  uri: string;
+  map: Record<string, ClipDef>;
+};
+
+type PlayerWrap = {
+  player: ReturnType<typeof createAudioPlayer>;
+  busyUntilMs: number;
+  ready: Promise<void>;
+};
 
 export class AudioEngine {
-  private sprites: Map<string, any> = new Map();
-  private activePlayers: Map<string, any> = new Map();
-  private scheduleAheadMs = Platform.OS === 'ios' ? 120 : 200;
+  private sprites: Record<SpriteName, Sprite> = {} as any;
+  private pools: Record<SpriteName, PlayerWrap[]> = {} as any;
+  private queue: ClipEvent[] = [];
   private running = false;
-  private queue: ScheduledNote[] = [];
-  private gain = 1.0;
-  private tickTimer: NodeJS.Timeout | null = null;
-  private currentMode: AudioMode = 'metronome';
-  private windPlayer: any = null;
-  private isInitialized = false;
+  private destroyed = false;
+  private debug = true; // Enable debug logging
+
+  // Tune per platform (can be made adaptive after latency calibration)
+  private scheduleAheadMs = 140; // iOS 80–140; Android 140–220
+
+  private log(...args: any[]) {
+    if (this.debug) console.log('[AudioEngine]', ...args);
+  }
 
   async init() {
-    // Configure audio mode for iOS/Android
+    this.log('Initializing AudioEngine...');
+    // Audio session
     await setAudioModeAsync({
       playsInSilentMode: true,
       allowsRecording: false,
-      interruptionMode: Platform.OS === 'ios' ? 'doNotMix' : 'mixWithOthers',
+      interruptionMode: 'mixWithOthers', // 'doNotMix' if you prefer
       shouldPlayInBackground: false,
     });
+    this.log('Audio mode set');
 
-    // Load all sprites
-    const metronomeSprite = await loadSprite('metronome');
-    const tonesSprite = await loadSprite('tones');
-    const windSprite = await loadSprite('wind');
-
-    this.sprites.set('metronome', metronomeSprite);
-    this.sprites.set('tones', tonesSprite);
-    this.sprites.set('wind', windSprite);
-
-    this.isInitialized = true;
-    console.log('AudioEngine initialized with all sprites');
-  }
-
-  setMode(mode: AudioMode) {
-    this.currentMode = mode;
-    console.log('AudioEngine mode set to:', mode);
-  }
-
-  getMode(): AudioMode {
-    return this.currentMode;
-  }
-
-  setMasterGain(g: number) {
-    this.gain = Math.max(0, Math.min(1, g));
-  }
-
-  enqueue(n: ScheduledNote) {
-    this.queue.push(n);
-  }
-
-  clearQueue() {
-    this.queue = [];
-  }
-
-  async start() {
-    if (!this.isInitialized) {
-      console.warn('AudioEngine not initialized');
-      return;
+    // Load sprites and build a small player pool for each
+    const names: SpriteName[] = ['metronome', 'tones', 'wind'];
+    for (const name of names) {
+      const s = await loadSprite(name); // must return { uri, map }
+      this.log(`Loaded sprite ${name}:`, s.uri, 'with', Object.keys(s.map).length, 'clips');
+      this.sprites[name] = s;
+      this.pools[name] = await this.makePool(s.uri, 3); // pool size 3 per sprite
+      this.log(`Created pool for ${name} with 3 players`);
     }
+    this.log('AudioEngine initialized successfully');
+  }
 
+  setScheduleAheadMs(ms: number) {
+    // allow runtime tuning (e.g., after calibration)
+    this.scheduleAheadMs = Math.max(40, Math.min(350, ms));
+  }
+
+  private async makePool(uri: string, n: number): Promise<PlayerWrap[]> {
+    const arr: PlayerWrap[] = [];
+    for (let i = 0; i < n; i++) {
+      const player = createAudioPlayer({ uri });
+      // Warmup so iOS is ready to seek immediately
+      // Note: play/pause tiny blip reduces first‑seek flakiness on iOS AVPlayer
+      const ready = (async () => {
+        try {
+          this.log(`Warming up player ${i} for sprite`);
+          player.seekTo(0);
+          await player.play();
+          await new Promise((r) => setTimeout(r, 5));
+          await player.pause();
+          this.log(`Player ${i} warmed up successfully`);
+        } catch (error) {
+          console.error(`Warmup failed for player ${i}:`, error);
+        }
+      })();
+      arr.push({ player, busyUntilMs: 0, ready });
+    }
+    return arr;
+  }
+
+  enqueue(evt: ClipEvent) {
+    this.queue.push(evt);
+  }
+
+  start() {
+    if (this.running) return;
+    this.log('Starting audio engine, queue size:', this.queue.length);
     this.running = true;
-
-    // Start wind background if in wind mode
-    if (this.currentMode === 'wind') {
-      await this.startWindBackground();
-    }
-
     this.tick();
-    console.log('AudioEngine started in', this.currentMode, 'mode');
   }
 
-  async stop() {
+  stop() {
+    this.log('Stopping audio engine');
     this.running = false;
-    this.queue = [];
-
-    if (this.tickTimer) {
-      clearTimeout(this.tickTimer);
-      this.tickTimer = null;
-    }
-
-    // Stop wind background
-    if (this.windPlayer) {
-      try {
-        await this.windPlayer.stopAsync();
-        await this.windPlayer.unloadAsync();
-      } catch (error) {
-        console.warn('Error stopping wind player:', error);
-      }
-      this.windPlayer = null;
-    }
-
-    // Stop all active players
-    for (const [id, player] of this.activePlayers) {
-      try {
-        await player.stopAsync();
-        await player.unloadAsync();
-      } catch (error) {
-        console.warn(`Error stopping player ${id}:`, error);
-      }
-    }
-    this.activePlayers.clear();
-
-    console.log('AudioEngine stopped');
   }
 
-  private async startWindBackground() {
-    if (this.currentMode !== 'wind') return;
-
-    try {
-      const windSprite = this.sprites.get('wind');
-      if (!windSprite) return;
-
-      // Create looping wind player
-      this.windPlayer = createAudioPlayer(windSprite.uri);
-      await this.windPlayer.setVolumeAsync(this.gain * 0.3); // Wind at 30% volume
-      await this.windPlayer.setIsLoopingAsync(true);
-      await this.windPlayer.playAsync();
-    } catch (error) {
-      console.error('Failed to start wind background:', error);
+  async destroy() {
+    this.running = false;
+    this.destroyed = true;
+    // Proper disposal for expo-audio players
+    for (const pool of Object.values(this.pools)) {
+      for (const w of pool) {
+        try { await w.player.pause(); } catch {}
+        try { await w.player.release(); } catch {}
+      }
     }
+  }
+
+  private takeFree(sprite: SpriteName, tUseMs: number): PlayerWrap | null {
+    const pool = this.pools[sprite];
+    if (!pool) return null;
+    const w = pool.find(p => p.busyUntilMs <= tUseMs) || null;
+    return w;
   }
 
   private tick = async () => {
-    if (!this.running) return;
-
+    if (!this.running || this.destroyed) return;
     const tNow = nowMs();
-
-    // Find events inside look-ahead window
     const due = this.queue.filter(n => n.tStartMs <= tNow + this.scheduleAheadMs);
 
     for (const n of due) {
-      await this.playScheduledNote(n);
-    }
+      const sprite = this.sprites[n.sprite];
+      const clip = sprite?.map[n.clip];
+      if (!clip) continue;
 
-    // Remove enqueued
-    this.queue = this.queue.filter(n => !due.includes(n));
+      const w = this.takeFree(n.sprite, n.tStartMs);
+      if (!w) continue; // if pool saturated, skip (or log)
 
-    // Schedule next tick
-    if (this.running) {
-      this.tickTimer = setTimeout(this.tick, 20); // Check every 20ms
-    }
-  };
+      // mark player busy for the window of this clip
+      w.busyUntilMs = n.tStartMs + clip.duration * 1000 + 20;
 
-  private async playScheduledNote(note: ScheduledNote) {
-    try {
-      // Determine which sprite to use based on clip name
-      let sprite: any;
-      if (note.clip.startsWith('tone')) {
-        sprite = this.sprites.get('tones');
-      } else if (note.clip === 'click' || note.clip.startsWith('wind')) {
-        sprite = this.sprites.get('wind');
-      } else {
-        sprite = this.sprites.get('metronome');
-      }
+      const delayMs = Math.max(0, n.tStartMs - tNow);
+      const offsetSec = clip.start;
+      const durMs = Math.max(1, Math.floor(clip.duration * 1000));
+      const linearGain = clamp01(n.gain ?? 1);
 
-      if (!sprite) {
-        console.warn('No sprite found for clip:', note.clip);
-        return;
-      }
+      // ensure warmed
+      await w.ready;
 
-      const clipInfo = sprite.map[note.clip];
-      if (!clipInfo) {
-        console.warn('Clip not found in sprite:', note.clip);
-        return;
-      }
-
-      // Calculate delay
-      const now = nowMs();
-      const delayMs = Math.max(0, note.tStartMs - now);
-
-      // Schedule playback
-      setTimeout(async () => {
-        await this.playClip(sprite, clipInfo, note.gainDb || 0);
-      }, delayMs);
-
-    } catch (error) {
-      console.error('Failed to play scheduled note:', error);
-    }
-  }
-
-  private async playClip(sprite: any, clipInfo: any, gainDb: number) {
-    try {
-      // Create a new player for this clip
-      const player = createAudioPlayer(sprite.uri);
-      const playerId = `${Date.now()}_${Math.random()}`;
-      this.activePlayers.set(playerId, player);
-
-      // Set volume
-      const linearGain = this.dbToLin(gainDb) * this.gain;
-      await player.setVolumeAsync(linearGain);
-
-      // Seek to clip start and play
-      await player.setPositionAsync(clipInfo.start * 1000);
-      await player.playAsync();
-
-      // Schedule stop at clip end
       setTimeout(async () => {
         try {
-          await player.stopAsync();
-          await player.unloadAsync();
-          this.activePlayers.delete(playerId);
+          this.log(`Playing clip ${n.clip} from sprite ${n.sprite} at offset ${offsetSec}s, delay ${delayMs}ms`);
+          w.player.seekTo(offsetSec); // REQUIRED each replay with sprite files
+          // expo-audio uses property for volume (0..1)
+          try {
+            (w.player as any).volume = linearGain;
+            this.log(`Set volume to ${linearGain}`);
+          } catch (e) {
+            console.error('Failed to set volume:', e);
+          }
+          await w.player.play();
+          this.log(`Started playing ${n.clip}`);
+
+          setTimeout(async () => {
+            try {
+              await w.player.pause();
+              this.log(`Paused ${n.clip} after ${durMs}ms`);
+            } catch (e) {
+              console.error(`Failed to pause ${n.clip}:`, e);
+            }
+          }, durMs);
         } catch (error) {
-          console.warn('Error stopping clip:', error);
+          console.error(`Failed to play clip ${n.clip}:`, error);
         }
-      }, clipInfo.duration * 1000);
-
-    } catch (error) {
-      console.error('Failed to play clip:', error);
+      }, delayMs);
     }
-  }
 
-  private dbToLin(db: number): number {
-    return Math.pow(10, db / 20);
-  }
+    // remove enqueued
+    if (due.length) {
+      const set = new Set(due);
+      this.queue = this.queue.filter(n => !set.has(n));
+    }
 
-  isRunning(): boolean {
-    return this.running;
-  }
-
-  getQueueLength(): number {
-    return this.queue.length;
-  }
+    // Continue loop
+    if (this.running && !this.destroyed) {
+      // 20ms tick balances CPU & jitter
+      setTimeout(this.tick, 20);
+    }
+  };
 }
 
-export default AudioEngine;
+function clamp01(x: number) {
+  return Math.max(0, Math.min(1, x));
+}
