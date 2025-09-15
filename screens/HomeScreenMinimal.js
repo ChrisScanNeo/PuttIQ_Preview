@@ -149,14 +149,15 @@ export default function HomeScreenMinimal({ user }) {
         setStartTime(null);
       } else {
         if (audioEngineRef.current) {
-          // Set start time to 500ms in future to match audio engine
-          const now = Date.now() + 500;
-          setStartTime(now);
+          // Set start time to 500ms in future - same for both timer and audio
+          const startTimeMs = Date.now() + 500;
+          setStartTime(startTimeMs);
           schedulePuttingSequence(
             audioEngineRef.current,
             bpm,
             audioMode,
-            100 // cycles
+            100, // cycles
+            startTimeMs // Pass exact same start time
           );
         }
         setMetronomeRunning(true);

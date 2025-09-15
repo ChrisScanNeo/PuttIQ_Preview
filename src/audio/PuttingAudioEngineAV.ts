@@ -24,6 +24,7 @@ export class PuttingAudioEngineAV {
   private running = false;
   private tickInterval: NodeJS.Timeout | null = null;
   private debug = true;
+  private initComplete = false;
 
   private log(...args: any[]) {
     if (this.debug) console.log('[PuttingAudioAV]', ...args);
@@ -127,6 +128,13 @@ export class PuttingAudioEngineAV {
       this.soundPools.set(soundKey, pool);
     }
 
+    // Log final pool sizes
+    console.log('[PuttingAudioAV] ✅ INITIALIZATION COMPLETE:');
+    for (const [key, pool] of this.soundPools.entries()) {
+      console.log(`  - ${key}: ${pool.length} sounds loaded`);
+    }
+
+    this.initComplete = true;
     this.log('PuttingAudioEngineAV initialized successfully');
   }
 
@@ -174,6 +182,8 @@ export class PuttingAudioEngineAV {
   start() {
     if (this.running) return;
     this.log('Starting engine');
+    // Clear any pending sounds from previous run
+    this.queue = [];
     this.running = true;
     this.startTicking();
   }
@@ -213,26 +223,40 @@ export class PuttingAudioEngineAV {
 
       const now = Date.now();
 
-      // Find sounds that should play now (within 20ms window)
+      // Find sounds that should play now (within timing window)
+      // Only play sounds that are due or slightly late (not too old)
       const dueSounds = this.queue.filter(sound => {
         const diff = sound.time - now;
-        return diff <= 20 && diff > -50;
+        return diff <= 10 && diff > -30; // Tighter window to avoid playing old sounds
       });
 
+      // Remove due sounds from queue first to avoid double-playing
       for (const sound of dueSounds) {
-        this.playSound(sound);
-        // Remove from queue
         this.queue = this.queue.filter(s => s.id !== sound.id);
       }
+
+      // Then play them
+      for (const sound of dueSounds) {
+        this.playSound(sound);
+      }
+
+      // Clean up old sounds that we missed (more than 100ms late)
+      const cleanupTime = now - 100;
+      this.queue = this.queue.filter(s => s.time > cleanupTime);
     }, 10);
   }
 
   private async playSound(queuedSound: QueuedSound) {
+    if (!this.initComplete) {
+      console.error('[PuttingAudioAV] ❌ Engine not initialized, cannot play sound');
+      return;
+    }
+
     const soundKey = this.getSoundKey(queuedSound.mode, queuedSound.soundType);
     const player = this.getAvailablePlayer(soundKey);
 
     if (!player) {
-      console.error(`[PuttingAudioAV] ❌ No available player for ${soundKey}`);
+      console.error(`[PuttingAudioAV] ❌ No available player for ${soundKey} (pool size: ${this.soundPools.get(soundKey)?.length || 0})`);
       return;
     }
 
@@ -242,8 +266,11 @@ export class PuttingAudioEngineAV {
       // Check if sound is loaded
       const status = await player.sound.getStatusAsync();
 
-      if (!status.isLoaded) {
-        console.error(`[PuttingAudioAV] Sound ${soundKey} is not loaded, skipping playback`);
+      // Log the status to debug
+      this.log(`Status for ${soundKey}:`, JSON.stringify(status));
+
+      if (!status || !status.isLoaded) {
+        console.error(`[PuttingAudioAV] Sound ${soundKey} is not loaded, skipping playback. Status:`, status);
         player.inUse = false;
         return;
       }
@@ -292,13 +319,20 @@ export function schedulePuttingSequence(
   engine: PuttingAudioEngineAV,
   bpm: number,
   mode: AudioMode,
-  bars: number = 100
+  bars: number = 100,
+  startTime?: number
 ) {
+  // Stop and clear any existing sounds first
+  engine.stop();
+
   // Each movement takes exactly 1 beat at the BPM rate
   const msPerBeat = 60000 / bpm;
   const totalBeats = bars * 4; // 4 beats per complete stroke cycle
 
-  const startTime = Date.now() + 500; // Start in 500ms
+  // Use provided start time or create new one
+  if (!startTime) {
+    startTime = Date.now() + 500; // Start in 500ms
+  }
 
   console.log('[PuttingScheduler] ⏰ TIMING DEBUG:', {
     bpm,
@@ -337,12 +371,12 @@ export function schedulePuttingSequence(
       console.log(`[PuttingScheduler] Beat ${beat}: ${positionName} at ${beatTime}ms (${new Date(beatTime).toISOString()})`);
     }
 
-    // Click at every beat
+    // Click at every beat - use metronome click for tones mode
     engine.enqueueSound({
       id: `beat-${beat}-click`,
       time: beatTime,
       soundType: 'click',
-      mode: mode === 'tones' ? 'wind' : mode
+      mode: mode === 'tones' ? 'metronome' : mode
     });
 
     // Add the appropriate tone sound (except for metronome mode)
