@@ -7,14 +7,31 @@ type Props = {
   isRunning: boolean;
   startTime?: number | null;
   sweep?: 'pingpong' | 'loop';
+  mode?: 'metronome' | 'tones' | 'wind'; // Add mode for putting-specific animation
 };
 
 const { width: screenWidth } = Dimensions.get('window');
+const BAR_PADDING = 40; // Padding from screen edges
 
-export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong' }: Props) {
+export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong', mode = 'metronome' }: Props) {
   const animValue = useRef(new Animated.Value(0)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
+
+  // Debug timing
+  useEffect(() => {
+    if (isRunning && startTime) {
+      console.log('[TimerBar] ⏰ TIMING DEBUG:', {
+        bpm,
+        mode,
+        startTime: new Date(startTime).toISOString(),
+        startTimeMs: startTime,
+        currentTime: Date.now(),
+        timeSinceStart: Date.now() - startTime,
+        isRunning,
+      });
+    }
+  }, [isRunning, startTime]);
 
   useEffect(() => {
     // Clean up any existing animation
@@ -31,23 +48,55 @@ export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong'
     }
 
     const spb = 60000 / bpm; // ms per beat
+    const cycleTime = spb * 4; // 4 beats per full cycle for tones/wind modes
 
-    // Calculate initial position if startTime is provided
+    // Calculate initial position
     let initialValue = 0;
-    if (startTime) {
-      const elapsed = Date.now() - startTime;
-      const cycles = elapsed / (spb * 2); // Each cycle is 2 beats (back and forth)
-      const fractionalCycle = cycles % 1;
 
-      // Set initial position based on elapsed time
-      if (sweep === 'pingpong') {
-        if (fractionalCycle <= 0.5) {
-          initialValue = fractionalCycle * 2;
-        } else {
-          initialValue = 2 - fractionalCycle * 2;
-        }
+    // For putting modes, 4-beat cycle: LEFT -> RIGHT (2 beats) -> LEFT (2 beats)
+    if (mode === 'tones' || mode === 'wind') {
+      if (!startTime) {
+        // Just starting - begin at LEFT
+        initialValue = 0;
       } else {
-        initialValue = fractionalCycle;
+        // Calculate position based on elapsed time in 4-beat cycle
+        const elapsed = Date.now() - startTime;
+
+        if (elapsed < 0) {
+          // Start time is in the future, stay at initial position (LEFT)
+          initialValue = 0;
+          console.log('[TimerBar] Waiting for start time, staying at LEFT');
+        } else {
+          // Position in the 4-beat cycle
+          const cycleProgress = (elapsed % cycleTime) / cycleTime;
+
+          // 0-0.5: Moving LEFT to RIGHT (first 2 beats)
+          // 0.5-1.0: Moving RIGHT to LEFT (last 2 beats)
+          if (cycleProgress < 0.5) {
+            // First half: LEFT to RIGHT
+            initialValue = cycleProgress * 2; // 0 to 1
+          } else {
+            // Second half: RIGHT to LEFT
+            initialValue = 2 - (cycleProgress * 2); // 1 to 0
+          }
+        }
+      }
+    } else {
+      // Standard metronome mode - simple pingpong
+      if (startTime) {
+        const elapsed = Date.now() - startTime;
+        const cycles = elapsed / (spb * 2);
+        const fractionalCycle = cycles % 1;
+
+        if (sweep === 'pingpong') {
+          if (fractionalCycle <= 0.5) {
+            initialValue = fractionalCycle * 2;
+          } else {
+            initialValue = 2 - fractionalCycle * 2;
+          }
+        } else {
+          initialValue = fractionalCycle;
+        }
       }
     }
 
@@ -56,6 +105,46 @@ export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong'
 
     // Create stable animation
     const createAnimation = () => {
+      // For putting modes, 4-beat cycle animation
+      if (mode === 'tones' || mode === 'wind') {
+        const timeUntilStart = startTime ? Math.max(0, startTime - Date.now()) : 0;
+
+        if (timeUntilStart > 0) {
+          // Wait until start time, then begin movement from LEFT to RIGHT
+          return Animated.sequence([
+            Animated.delay(timeUntilStart),
+            Animated.timing(animValue, {
+              toValue: 1, // First move: LEFT to RIGHT
+              duration: spb * 2, // 2 beats
+              useNativeDriver: true,
+            }),
+          ]);
+        } else {
+          // Already started, continue from current position
+          const elapsed = Date.now() - startTime;
+          const cycleProgress = (elapsed % cycleTime) / cycleTime;
+
+          if (cycleProgress < 0.5) {
+            // Currently moving LEFT to RIGHT
+            const remainingTime = (0.5 - cycleProgress) * cycleTime;
+            return Animated.timing(animValue, {
+              toValue: 1,
+              duration: remainingTime,
+              useNativeDriver: true,
+            });
+          } else {
+            // Currently moving RIGHT to LEFT
+            const remainingTime = (1 - cycleProgress) * cycleTime;
+            return Animated.timing(animValue, {
+              toValue: 0,
+              duration: remainingTime,
+              useNativeDriver: true,
+            });
+          }
+        }
+      }
+
+      // Standard metronome animation
       if (sweep === 'pingpong') {
         // Back and forth animation
         return Animated.sequence([
@@ -85,6 +174,26 @@ export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong'
 
     // Then create the repeating animation
     const repeatingAnimation = () => {
+      // For putting modes, 4-beat cycle: LEFT->RIGHT (2 beats), RIGHT->LEFT (2 beats)
+      if (mode === 'tones' || mode === 'wind') {
+        return Animated.loop(
+          Animated.sequence([
+            // Move LEFT to RIGHT (2 beats)
+            Animated.timing(animValue, {
+              toValue: 1,
+              duration: spb * 2,
+              useNativeDriver: true,
+            }),
+            // Move RIGHT to LEFT (2 beats)
+            Animated.timing(animValue, {
+              toValue: 0,
+              duration: spb * 2,
+              useNativeDriver: true,
+            }),
+          ])
+        );
+      }
+
       if (sweep === 'pingpong') {
         return Animated.loop(
           Animated.sequence([
@@ -134,12 +243,12 @@ export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong'
       }
       setIsAnimating(false);
     };
-  }, [bpm, isRunning, startTime, sweep]);
+  }, [bpm, isRunning, startTime, sweep, mode]);
 
-  // Calculate marker position
+  // Calculate marker position - use full width minus padding
   const markerTranslateX = animValue.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, screenWidth * 0.8 - 20], // Adjust for marker width
+    outputRange: [0, screenWidth - BAR_PADDING - 20], // Full width minus padding and marker width
   });
 
   // Calculate color based on position (red → orange → green → orange → red)
@@ -177,7 +286,7 @@ export default function TimerBar({ bpm, isRunning, startTime, sweep = 'pingpong'
 
 const styles = StyleSheet.create({
   container: {
-    width: screenWidth * 0.8,
+    width: screenWidth - BAR_PADDING, // Full width minus padding
     height: 40,
     justifyContent: 'center',
     alignSelf: 'center',

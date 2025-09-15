@@ -20,9 +20,10 @@ import SteppedGolfBall from '../components/SteppedGolfBall';
 // Hooks
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector';
 
-// New Audio System
-import { AudioEngine } from '../src/audio/audioEngine';
-import { runSequence, stopSequence } from '../src/audio/scheduler';
+// New Audio System - Using PuttingAudioEngineAV with expo-av for reliable playback
+import { PuttingAudioEngineAV, schedulePuttingSequence, stopPuttingSequence } from '../src/audio/PuttingAudioEngineAV';
+// import { AudioEngine } from '../src/audio/audioEngine';
+// import { runSequence, stopSequence } from '../src/audio/scheduler';
 import TimerBar from '../src/ui/TimerBar';
 import { loadAudioSettings, saveAudioSettings } from '../src/state/audioSettings';
 
@@ -68,11 +69,11 @@ export default function HomeScreenMinimal({ user }) {
         setBpm(settings.bpm);
         setAudioMode(settings.mode);
 
-        // Initialize audio engine
-        audioEngineRef.current = new AudioEngine();
+        // Initialize putting audio engine with expo-av
+        audioEngineRef.current = new PuttingAudioEngineAV();
         await audioEngineRef.current.init();
 
-        console.log('New audio engine initialized successfully');
+        console.log('Putting audio engine (expo-av) initialized successfully');
       } catch (error) {
         console.error('Failed to initialize audio engine:', error);
       }
@@ -138,24 +139,25 @@ export default function HomeScreenMinimal({ user }) {
         startDetector();
       }
     } else {
-      // Use new audio engine
+      // Use putting audio engine
       if (metronomeRunning) {
         if (audioEngineRef.current) {
-          stopSequence(audioEngineRef.current);
+          stopPuttingSequence(audioEngineRef.current);
         }
         setMetronomeRunning(false);
         setMetronomeBeatPosition(0);
         setStartTime(null);
       } else {
         if (audioEngineRef.current) {
-          const now = Date.now();
+          // Set start time to 500ms in future to match audio engine
+          const now = Date.now() + 500;
           setStartTime(now);
-          runSequence(audioEngineRef.current, {
+          schedulePuttingSequence(
+            audioEngineRef.current,
             bpm,
-            bars: 100,
-            beatsPerBar: 4,
-            mode: audioMode,
-          });
+            audioMode,
+            100 // cycles
+          );
         }
         setMetronomeRunning(true);
       }
@@ -166,7 +168,7 @@ export default function HomeScreenMinimal({ user }) {
   const toggleDetection = () => {
     // Stop audio engine if running
     if (metronomeRunning && audioEngineRef.current) {
-      stopSequence(audioEngineRef.current);
+      stopPuttingSequence(audioEngineRef.current);
       setMetronomeRunning(false);
       setStartTime(null);
     }
@@ -258,6 +260,7 @@ export default function HomeScreenMinimal({ user }) {
             isRunning={metronomeRunning}
             startTime={startTime}
             sweep="pingpong"
+            mode={audioMode}
           />
 
           {/* Golf ball - centered and maximized between top bar and bottom controls */}
