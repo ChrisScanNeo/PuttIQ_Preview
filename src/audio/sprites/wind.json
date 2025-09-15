@@ -1,0 +1,17 @@
+{
+  "sampleRate": 44100,
+  "clips": {
+    "wind1": {
+      "start": 0.0,
+      "duration": 0.24
+    },
+    "wind2": {
+      "start": 0.36,
+      "duration": 0.754
+    },
+    "click": {
+      "start": 1.234,
+      "duration": 0.03
+    }
+  }
+}

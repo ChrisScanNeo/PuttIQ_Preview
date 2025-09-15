@@ -1,4 +1,5 @@
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { Platform } from 'react-native';
 
 /**
  * Enhanced Metronome class with precise timing and local audio support
@@ -20,10 +21,10 @@ export class Metronome {
    */
   async load() {
     try {
-      // Configure audio mode for simultaneous playback and recording
+      // Configure audio mode with platform-specific settings
       await setAudioModeAsync({
         playsInSilentMode: true,
-        allowsRecording: true, // Important: allow recording while playing
+        allowsRecording: Platform.OS === 'ios' ? false : true, // iOS: false to use main speaker
         interruptionMode: 'mixWithOthers',
         shouldPlayInBackground: false,
       });
@@ -62,28 +63,34 @@ export class Metronome {
    */
   async start() {
     if (this.isRunning || !this.sound || !this.isLoaded) {
-      console.warn('Cannot start metronome:', { 
-        isRunning: this.isRunning, 
+      console.warn('Cannot start metronome:', {
+        isRunning: this.isRunning,
         hasSound: !!this.sound,
-        isLoaded: this.isLoaded 
+        isLoaded: this.isLoaded
       });
       return;
     }
 
     this.isRunning = true;
     const period = 60000 / this.bpm; // milliseconds between beats
-    
+
     // Start first tick after a short delay
-    this.nextTickAt = performance.now() + 200;
+    this.nextTickAt = Date.now() + 200;
 
-    // Main timing loop using requestAnimationFrame for precision
-    const loop = async () => {
-      if (!this.isRunning || !this.sound) return;
+    // Main timing loop using setInterval for better consistency
+    const loop = () => {
+      if (!this.isRunning || !this.sound) {
+        if (this.timer) {
+          clearInterval(this.timer);
+          this.timer = null;
+        }
+        return;
+      }
 
-      const now = performance.now();
-      
-      // Check if it's time for the next tick (with 5ms tolerance)
-      if (now >= this.nextTickAt - 5) {
+      const now = Date.now();
+
+      // Check if it's time for the next tick
+      if (now >= this.nextTickAt) {
         try {
           // Play the tick sound - reset to start and play
           this.sound.seekTo(0);
@@ -91,22 +98,16 @@ export class Metronome {
         } catch (error) {
           console.warn('Failed to play tick:', error);
         }
-        
+
         // Schedule next tick
-        this.nextTickAt += period;
-        
-        // Prevent drift by resetting if we're too far behind
-        if (now > this.nextTickAt + period) {
-          this.nextTickAt = now + period;
+        while (this.nextTickAt <= now) {
+          this.nextTickAt += period;
         }
       }
-
-      // Continue the loop
-      this.timer = requestAnimationFrame(loop);
     };
 
-    // Start the loop
-    this.timer = requestAnimationFrame(loop);
+    // Use setInterval with a fast check rate
+    this.timer = setInterval(loop, 10); // Check every 10ms
     console.log('Metronome started at', this.bpm, 'BPM');
   }
 
@@ -117,9 +118,9 @@ export class Metronome {
     if (!this.isRunning) return;
 
     this.isRunning = false;
-    
+
     if (this.timer) {
-      cancelAnimationFrame(this.timer);
+      clearInterval(this.timer);
       this.timer = null;
     }
 

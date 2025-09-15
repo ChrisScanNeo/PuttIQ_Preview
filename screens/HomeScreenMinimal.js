@@ -20,14 +20,18 @@ import SteppedGolfBall from '../components/SteppedGolfBall';
 // Hooks
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector';
 
-// Services
-import { Metronome } from '../services/audio/Metronome';
+// New Audio System
+import { AudioEngine } from '../src/audio/audioEngine';
+import { Scheduler } from '../src/audio/scheduler';
+import TimerBar from '../src/ui/TimerBar';
+import ModeSwitcher from '../src/ui/ModeSwitcher';
+import { loadAudioSettings, saveAudioSettings } from '../src/state/audioSettings';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function HomeScreenMinimal({ user }) {
   // State
-  const [bpm, setBpm] = useState(user?.settings?.defaultBPM || 30);
+  const [bpm, setBpm] = useState(user?.settings?.defaultBPM || 80);
   const [showHitFeedback, setShowHitFeedback] = useState(false);
   const [hitFeedbackOpacity] = useState(new Animated.Value(0));
   const [currentHitQuality, setCurrentHitQuality] = useState(null);
@@ -35,9 +39,12 @@ export default function HomeScreenMinimal({ user }) {
   const [detectionEnabled, setDetectionEnabled] = useState(false);
   const [metronomeRunning, setMetronomeRunning] = useState(false);
   const [metronomeBeatPosition, setMetronomeBeatPosition] = useState(0);
+  const [audioMode, setAudioMode] = useState('metronome');
+  const [startTime, setStartTime] = useState(null);
 
   // Refs
-  const metronomeRef = useRef(null);
+  const audioEngineRef = useRef(null);
+  const schedulerRef = useRef(null);
   const beatAnimationRef = useRef(null);
 
   // Detection hook - only initialize if detection is enabled
@@ -54,35 +61,40 @@ export default function HomeScreenMinimal({ user }) {
   // Use detector beat position if available, otherwise use metronome position
   const beatPosition = detectionEnabled && detectorBeatPosition ? detectorBeatPosition : metronomeBeatPosition;
 
-  // Initialize metronome on mount
+  // Initialize new audio engine on mount
   useEffect(() => {
-    const initMetronome = async () => {
+    const initAudioEngine = async () => {
       try {
-        metronomeRef.current = new Metronome();
-        await metronomeRef.current.load();
-        metronomeRef.current.setBpm(bpm);
-        console.log('Standalone metronome initialized');
+        // Load saved settings
+        const settings = await loadAudioSettings();
+        setBpm(settings.bpm);
+        setAudioMode(settings.mode);
+
+        // Initialize audio engine and scheduler
+        audioEngineRef.current = new AudioEngine();
+        await audioEngineRef.current.init();
+
+        schedulerRef.current = new Scheduler(audioEngineRef.current);
+
+        console.log('New audio engine initialized successfully');
       } catch (error) {
-        console.error('Failed to initialize metronome:', error);
+        console.error('Failed to initialize audio engine:', error);
       }
     };
 
-    initMetronome();
+    initAudioEngine();
 
     return () => {
-      if (metronomeRef.current) {
-        metronomeRef.current.stop();
-        metronomeRef.current.dispose();
+      if (audioEngineRef.current) {
+        audioEngineRef.current.stop();
       }
     };
   }, []);
 
-  // Update metronome BPM
+  // Save settings when changed
   useEffect(() => {
-    if (metronomeRef.current) {
-      metronomeRef.current.setBpm(bpm);
-    }
-  }, [bpm]);
+    saveAudioSettings({ bpm, mode: audioMode });
+  }, [bpm, audioMode]);
 
   // Animate beat position when metronome is running
   useEffect(() => {
@@ -119,7 +131,7 @@ export default function HomeScreenMinimal({ user }) {
   // Calculate if in listening zone
   const inListeningZone = isRunning && beatPosition >= 0.2 && beatPosition <= 0.8;
 
-  // Handle play/pause
+  // Handle play/pause with new audio engine
   const handlePlayPause = async () => {
     if (detectionEnabled) {
       // If detection is on, use detector
@@ -129,16 +141,25 @@ export default function HomeScreenMinimal({ user }) {
         startDetector();
       }
     } else {
-      // Use standalone metronome
+      // Use new audio engine
       if (metronomeRunning) {
-        if (metronomeRef.current) {
-          metronomeRef.current.stop();
+        if (schedulerRef.current) {
+          await schedulerRef.current.stop();
         }
         setMetronomeRunning(false);
         setMetronomeBeatPosition(0);
+        setStartTime(null);
       } else {
-        if (metronomeRef.current) {
-          await metronomeRef.current.start();
+        if (schedulerRef.current) {
+          const now = Date.now();
+          setStartTime(now);
+          await schedulerRef.current.runSequence({
+            bpm,
+            bars: 100,
+            beatsPerBar: 4,
+            mode: audioMode,
+            startDelay: 500,
+          });
         }
         setMetronomeRunning(true);
       }
@@ -147,10 +168,11 @@ export default function HomeScreenMinimal({ user }) {
 
   // Toggle detection on/off
   const toggleDetection = () => {
-    // Stop metronome if running
-    if (metronomeRunning && metronomeRef.current) {
-      metronomeRef.current.stop();
+    // Stop audio engine if running
+    if (metronomeRunning && schedulerRef.current) {
+      schedulerRef.current.stop();
       setMetronomeRunning(false);
+      setStartTime(null);
     }
 
     // Stop detector if running
@@ -234,11 +256,19 @@ export default function HomeScreenMinimal({ user }) {
         resizeMode="cover"
       >
         <SafeAreaView style={styles.safeArea}>
-          {/* Colored dots indicator at top */}
-          <ColoredDotsIndicator
-            periodMs={60000 / bpm}
-            running={isPracticeActive}
-            beatPosition={beatPosition || 0}
+          {/* Mode switcher at top */}
+          <ModeSwitcher
+            currentMode={audioMode}
+            onModeChange={setAudioMode}
+            disabled={metronomeRunning}
+          />
+
+          {/* New Timer bar instead of dots */}
+          <TimerBar
+            bpm={bpm}
+            isRunning={metronomeRunning}
+            startTime={startTime}
+            sweep="pingpong"
           />
 
           {/* Golf ball - centered and maximized between top bar and bottom controls */}
@@ -284,9 +314,9 @@ export default function HomeScreenMinimal({ user }) {
             bpm={bpm}
             onBpmIncrease={handleBpmIncrease}
             onBpmDecrease={handleBpmDecrease}
-            onMetronome={() => console.log('Metronome toggled')}
-            onMusic={() => console.log('Music toggled')}
-            onWind={() => console.log('Wind toggled')}
+            onMetronome={() => !metronomeRunning && setAudioMode('metronome')}
+            onMusic={() => !metronomeRunning && setAudioMode('tones')}
+            onWind={() => !metronomeRunning && setAudioMode('wind')}
           />
 
           {/* Bottom left instruction text */}
@@ -332,10 +362,11 @@ export default function HomeScreenMinimal({ user }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
   },
   background: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
   safeArea: {
     flex: 1,

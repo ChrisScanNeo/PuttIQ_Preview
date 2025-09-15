@@ -1,0 +1,57 @@
+{
+  "sampleRate": 44100,
+  "clips": {
+    "tone1": {
+      "start": 0.0,
+      "duration": 1.2
+    },
+    "tone2": {
+      "start": 1.32,
+      "duration": 0.091
+    },
+    "tone3": {
+      "start": 1.531,
+      "duration": 0.448
+    },
+    "tone4": {
+      "start": 2.099,
+      "duration": 1.2
+    },
+    "tone5": {
+      "start": 3.419,
+      "duration": 0.096
+    },
+    "tone6": {
+      "start": 3.635,
+      "duration": 0.097
+    },
+    "tone7": {
+      "start": 3.852,
+      "duration": 0.793
+    },
+    "tone8": {
+      "start": 4.765,
+      "duration": 1.2
+    },
+    "tone9": {
+      "start": 6.085,
+      "duration": 0.231
+    },
+    "tone10": {
+      "start": 6.436,
+      "duration": 0.436
+    },
+    "tone11": {
+      "start": 6.992,
+      "duration": 0.442
+    },
+    "tone12": {
+      "start": 7.554,
+      "duration": 0.561
+    },
+    "tone13": {
+      "start": 8.235,
+      "duration": 0.523
+    }
+  }
+}

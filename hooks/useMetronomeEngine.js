@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Audio } from 'expo-audio';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { Platform } from 'react-native';
 
 /**
  * Drift-corrected metronome engine with zone helpers (20-80% of beat)
@@ -18,27 +19,24 @@ export function useMetronomeEngine(bpm, running) {
     (async () => {
       try {
         if (soundRef.current) {
-          await soundRef.current.unloadAsync();
+          soundRef.current.release();
+          soundRef.current = null;
         }
 
-        // Configure audio mode
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          interruptionModeIOS: 1, // DO_NOT_MIX
-          shouldDuckAndroid: true,
-          staysActiveInBackground: false,
-          allowsRecordingIOS: true,
-          playThroughEarpieceAndroid: false,
+        // Configure audio mode with platform-specific settings
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          interruptionMode: 'doNotMix',
+          shouldPlayInBackground: false,
+          allowsRecording: Platform.OS === 'ios' ? false : true, // iOS: false to use main speaker
         });
 
-        // Load the metronome sound
-        const { sound } = await Audio.Sound.createAsync(
-          require('../assets/sound/metronome-85688.mp3'),
-          { volume: 0.7 }
-        );
+        // Load the metronome sound using expo-audio
+        const sound = createAudioPlayer(require('../assets/sound/metronome-85688.mp3'));
+        sound.volume = 0.7;
 
         if (!alive) {
-          await sound.unloadAsync();
+          sound.release();
           return;
         }
 
@@ -50,6 +48,9 @@ export function useMetronomeEngine(bpm, running) {
 
     return () => {
       alive = false;
+      if (soundRef.current) {
+        soundRef.current.release();
+      }
     };
   }, []);
 
@@ -77,7 +78,12 @@ export function useMetronomeEngine(bpm, running) {
         
         // Play the metronome sound
         if (soundRef.current) {
-          soundRef.current.replayAsync().catch(console.error);
+          try {
+            soundRef.current.seekTo(0);
+            soundRef.current.play();
+          } catch (error) {
+            console.error('Failed to play metronome tick:', error);
+          }
         }
 
         // Schedule next beat

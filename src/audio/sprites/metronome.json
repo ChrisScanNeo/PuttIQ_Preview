@@ -1,0 +1,29 @@
+{
+  "sampleRate": 44100,
+  "clips": {
+    "low1": {
+      "start": 0.0,
+      "duration": 0.918
+    },
+    "low2": {
+      "start": 1.038,
+      "duration": 0.959
+    },
+    "tick1": {
+      "start": 2.117,
+      "duration": 0.079
+    },
+    "tick2": {
+      "start": 2.316,
+      "duration": 0.118
+    },
+    "tick3": {
+      "start": 2.554,
+      "duration": 0.097
+    },
+    "high": {
+      "start": 2.771,
+      "duration": 0.576
+    }
+  }
+}
