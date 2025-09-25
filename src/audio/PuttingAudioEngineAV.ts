@@ -38,11 +38,11 @@ export class PuttingAudioEngineAV {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         allowsRecordingIOS: false,
-        staysActiveInBackground: false,
+        staysActiveInBackground: true,  // Keep active
         shouldDuckAndroid: false,
         playThroughEarpieceAndroid: false,
-        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        interruptionModeIOS: InterruptionModeIOS.DuckOthers,  // Duck other audio
+        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
       });
       this.log('Audio mode configured successfully');
     } catch (error) {
@@ -79,7 +79,7 @@ export class PuttingAudioEngineAV {
             source,
             {
               shouldPlay: false,
-              volume: 0.8,
+              volume: 1.0,  // Max volume
               isLooping: false,
             }
           );
@@ -167,29 +167,44 @@ export class PuttingAudioEngineAV {
     const player = pool.find(p => !p.inUse);
     if (player) {
       player.inUse = true;
-      // Reset after sound duration (approximate)
+      // Reset after sound duration - match actual clip lengths from logs
+      // Clicks are ~48ms, ready ~480ms, back ~744ms, swing ~720-888ms
+      let duration = 200; // Default for clicks
+      if (soundKey.includes('ready')) duration = 550;
+      else if (soundKey.includes('back')) duration = 800;
+      else if (soundKey.includes('swing')) duration = 950;
+      else if (!soundKey.includes('click')) duration = 900; // Other tones
+
       setTimeout(() => {
         player.inUse = false;
-      }, 300);
+      }, duration);
     }
     return player || null;
   }
 
   enqueueSound(sound: QueuedSound) {
     this.queue.push(sound);
+    // Log queue size occasionally
+    if (this.queue.length % 10 === 1) {
+      this.log(`Queue now has ${this.queue.length} sounds`);
+    }
+  }
+
+  clearQueue() {
+    this.log(`Clearing queue of ${this.queue.length} sounds`);
+    this.queue = [];
   }
 
   start() {
     if (this.running) return;
     this.log('Starting engine');
-    // Clear any pending sounds from previous run
-    this.queue = [];
+    this.log(`Queue length at start: ${this.queue.length} sounds`);
     this.running = true;
     this.startTicking();
   }
 
   stop() {
-    this.log('Stopping engine');
+    this.log('Stopping engine - Called from:', new Error().stack?.split('\n')[2]);
     this.running = false;
     this.queue = [];
 
@@ -211,9 +226,11 @@ export class PuttingAudioEngineAV {
   }
 
   private startTicking() {
+    this.log('Starting tick interval...');
     // Check every 10ms for sounds to play
     this.tickInterval = setInterval(() => {
       if (!this.running) {
+        this.log('Engine not running, stopping tick interval');
         if (this.tickInterval) {
           clearInterval(this.tickInterval);
           this.tickInterval = null;
@@ -230,6 +247,10 @@ export class PuttingAudioEngineAV {
         return diff <= 10 && diff > -30; // Tighter window to avoid playing old sounds
       });
 
+      if (dueSounds.length > 0) {
+        this.log(`Found ${dueSounds.length} sounds due at ${now}ms`);
+      }
+
       // Remove due sounds from queue first to avoid double-playing
       for (const sound of dueSounds) {
         this.queue = this.queue.filter(s => s.id !== sound.id);
@@ -242,7 +263,11 @@ export class PuttingAudioEngineAV {
 
       // Clean up old sounds that we missed (more than 100ms late)
       const cleanupTime = now - 100;
+      const beforeCleanup = this.queue.length;
       this.queue = this.queue.filter(s => s.time > cleanupTime);
+      if (beforeCleanup !== this.queue.length) {
+        this.log(`Cleaned up ${beforeCleanup - this.queue.length} old sounds`);
+      }
     }, 10);
   }
 
@@ -281,11 +306,20 @@ export class PuttingAudioEngineAV {
       }
 
       await player.sound.setPositionAsync(0);
-      await player.sound.playAsync();
+      this.log(`Attempting to play ${soundKey}...`);
 
-      this.log(`✅ Successfully played ${soundKey}`);
+      const playResult = await player.sound.playAsync();
+      this.log(`Play result for ${soundKey}:`, JSON.stringify(playResult));
+
+      this.log(`✅ Successfully triggered play for ${soundKey}`);
     } catch (error) {
       console.error(`[PuttingAudioAV] ❌ Failed to play ${soundKey}:`, error);
+      console.error(`[PuttingAudioAV] Error details:`, {
+        soundKey,
+        mode: queuedSound.mode,
+        soundType: queuedSound.soundType,
+        error: error.message || error
+      });
       // Try to recover
       try {
         await player.sound.stopAsync();
@@ -322,8 +356,8 @@ export function schedulePuttingSequence(
   bars: number = 100,
   startTime?: number
 ) {
-  // Stop and clear any existing sounds first
-  engine.stop();
+  // Clear any existing sounds first (keep engine running if it is)
+  engine.clearQueue();
 
   // Each movement takes exactly 1 beat at the BPM rate
   const msPerBeat = 60000 / bpm;
@@ -353,7 +387,7 @@ export function schedulePuttingSequence(
   // Beat 3: RIGHT - Downswing tone + Click
   // Beat 4: LEFT - Click only (cycle repeats)
 
-  for (let beat = 0; beat <= Math.min(40, totalBeats); beat++) { // Limit for debugging
+  for (let beat = 0; beat <= totalBeats; beat++) { // Schedule all beats
     const beatTime = startTime + (beat * msPerBeat);
 
     // Calculate position in 4-beat cycle
@@ -417,5 +451,6 @@ export function schedulePuttingSequence(
 }
 
 export function stopPuttingSequence(engine: PuttingAudioEngineAV) {
+  console.log('[PuttingScheduler] stopPuttingSequence called');
   engine.stop();
 }

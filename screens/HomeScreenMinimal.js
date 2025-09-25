@@ -20,8 +20,8 @@ import SteppedGolfBall from '../components/SteppedGolfBall';
 // Hooks
 import { usePuttIQDetector } from '../hooks/usePuttIQDetector';
 
-// New Audio System - Using PuttingAudioEngineAV with expo-av for reliable playback
-import { PuttingAudioEngineAV, schedulePuttingSequence, stopPuttingSequence } from '../src/audio/PuttingAudioEngineAV';
+// New Audio System - Using Progressive Engine to avoid queue buildup
+import { PuttingAudioEngineProgressive, schedulePuttingSequence, stopPuttingSequence } from '../src/audio/PuttingAudioEngineAV_Progressive';
 // import { AudioEngine } from '../src/audio/audioEngine';
 // import { runSequence, stopSequence } from '../src/audio/scheduler';
 import TimerBar from '../src/ui/TimerBar';
@@ -45,6 +45,8 @@ export default function HomeScreenMinimal({ user }) {
   // Refs
   const audioEngineRef = useRef(null);
   const beatAnimationRef = useRef(null);
+  const startGuardRef = useRef(0); // Debounce guard
+  const startTimeRef = useRef(null);
 
   // Detection hook - only initialize if detection is enabled
   const detector = detectionEnabled ? usePuttIQDetector(bpm) : null;
@@ -69,11 +71,11 @@ export default function HomeScreenMinimal({ user }) {
         setBpm(settings.bpm);
         setAudioMode(settings.mode);
 
-        // Initialize putting audio engine with expo-av
-        audioEngineRef.current = new PuttingAudioEngineAV();
+        // Initialize progressive audio engine to avoid queue buildup
+        audioEngineRef.current = new PuttingAudioEngineProgressive();
         await audioEngineRef.current.init();
 
-        console.log('Putting audio engine (expo-av) initialized successfully');
+        console.log('Progressive audio engine initialized successfully');
       } catch (error) {
         console.error('Failed to initialize audio engine:', error);
       }
@@ -131,6 +133,11 @@ export default function HomeScreenMinimal({ user }) {
 
   // Handle play/pause with new audio engine
   const handlePlayPause = async () => {
+    // Debounce rapid taps to prevent restart
+    const now = Date.now();
+    if (now - startGuardRef.current < 800) return;
+    startGuardRef.current = now;
+
     if (detectionEnabled) {
       // If detection is on, use detector
       if (isRunning) {
@@ -151,14 +158,10 @@ export default function HomeScreenMinimal({ user }) {
         if (audioEngineRef.current) {
           // Set start time to 500ms in future - same for both timer and audio
           const startTimeMs = Date.now() + 500;
+          startTimeRef.current = startTimeMs;
           setStartTime(startTimeMs);
-          schedulePuttingSequence(
-            audioEngineRef.current,
-            bpm,
-            audioMode,
-            100, // cycles
-            startTimeMs // Pass exact same start time
-          );
+          // Use startSequence method for progressive scheduling
+          audioEngineRef.current.startSequence(bpm, audioMode, startTimeMs);
         }
         setMetronomeRunning(true);
       }
