@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, ImageBackground, Image, Dimensions } from 'react-native';
 import Slider from '@react-native-community/slider';
-import VideoTimerBar from '../components/VideoTimerBar';
 import SteppedGolfBall from '../components/SteppedGolfBall';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -40,12 +39,10 @@ export default function HomeScreenVideo({ user }) {
             </View>
           </View>
 
-          {/* Comment out video timer bar for now - will add back later */}
-          {/* <VideoTimerBar
-            isPlaying={isPlaying}
-            mode={mode}
-            bpm={bpm}
-          /> */}
+          {/* Placeholder for timer bar - will add video/animation component here */}
+          <View style={styles.timerBarPlaceholder}>
+            {/* Timer bar will be added here */}
+          </View>
 
           {/* Golf ball in center */}
           <View style={styles.golfBallContainer}>
@@ -413,5 +410,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     textAlign: 'center',
+  },
+  timerBarPlaceholder: {
+    position: 'absolute',
+    top: screenHeight * 0.05,
+    left: 0,
+    right: 0,
+    height: 80,
+    zIndex: 15,
+    // Uncomment below to see the placeholder area during development
+    // backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    // borderWidth: 1,
+    // borderColor: 'rgba(255, 255, 255, 0.3)',
+    // borderStyle: 'dashed',
   },
 });
