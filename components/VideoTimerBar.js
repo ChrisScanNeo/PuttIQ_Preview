@@ -70,9 +70,11 @@ const styles = StyleSheet.create({
     top: '30%',
     left: 0,
     zIndex: 10,
+    backgroundColor: 'transparent',
   },
   video: {
     width: '100%',
     height: '100%',
+    backgroundColor: 'transparent',
   },
 });
