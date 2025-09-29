@@ -1,7 +1,7 @@
 import React from 'react';
-import HomeScreenMinimal from './screens/HomeScreenMinimal';
+import HomeScreenVideo from './screens/HomeScreenVideo';
 
 export default function MinimalNavigator({ user }) {
-  // Simple navigator that just renders the HomeScreenMinimal directly
-  return <HomeScreenMinimal user={user} />;
+  // Simple navigator that renders the video-based HomeScreen
+  return <HomeScreenVideo user={user} />;
 }
