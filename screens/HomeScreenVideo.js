@@ -10,6 +10,7 @@ export default function HomeScreenVideo({ user }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [bpm, setBpm] = useState(70);
   const [mode, setMode] = useState('tones'); // tones, beats, or wind
+  const [sensitivity, setSensitivity] = useState(0.5);
 
   const toggle = () => {
     setIsPlaying(!isPlaying);
@@ -39,12 +40,12 @@ export default function HomeScreenVideo({ user }) {
             </View>
           </View>
 
-          {/* Video Timer Bar Overlay */}
-          <VideoTimerBar
+          {/* Comment out video timer bar for now - will add back later */}
+          {/* <VideoTimerBar
             isPlaying={isPlaying}
             mode={mode}
             bpm={bpm}
-          />
+          /> */}
 
           {/* Golf ball in center */}
           <View style={styles.golfBallContainer}>
@@ -56,16 +57,38 @@ export default function HomeScreenVideo({ user }) {
             />
           </View>
 
-          {/* Mode Selector - Top Left */}
-          <View style={styles.modeContainer}>
-            <Text style={styles.modeLabel}>Sound Mode:</Text>
-            <View style={styles.modeButtons}>
+          {/* BPM Controls on left side - Original style */}
+          <View style={styles.bpmControlsContainer}>
+            <TouchableOpacity
+              style={styles.bpmButton}
+              onPress={() => setBpm(Math.max(70, bpm - 1))}
+              disabled={isPlaying}
+            >
+              <Text style={styles.bpmButtonText}>-</Text>
+            </TouchableOpacity>
+            <View style={styles.bpmDisplay}>
+              <Text style={styles.bpmValue}>{bpm}</Text>
+              <Text style={styles.bpmLabel}>BPM</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.bpmButton}
+              onPress={() => setBpm(Math.min(80, bpm + 1))}
+              disabled={isPlaying}
+            >
+              <Text style={styles.bpmButtonText}>+</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Main controls area */}
+          <View style={styles.metronomeArea}>
+            {/* Mode Selector Buttons */}
+            <View style={styles.modeContainer}>
               <TouchableOpacity
                 style={[styles.modeButton, mode === 'tones' && styles.modeButtonActive]}
                 onPress={() => selectMode('tones')}
               >
                 <Text style={[styles.modeButtonText, mode === 'tones' && styles.modeButtonTextActive]}>
-                  Tones
+                  🎵 Tones
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -73,7 +96,7 @@ export default function HomeScreenVideo({ user }) {
                 onPress={() => selectMode('beats')}
               >
                 <Text style={[styles.modeButtonText, mode === 'beats' && styles.modeButtonTextActive]}>
-                  Beats
+                  🥁 Beats
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -81,54 +104,95 @@ export default function HomeScreenVideo({ user }) {
                 onPress={() => selectMode('wind')}
               >
                 <Text style={[styles.modeButtonText, mode === 'wind' && styles.modeButtonTextActive]}>
-                  Wind
+                  🍃 Wind
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
 
-          {/* BPM Controls on left side */}
-          <View style={styles.bpmControlsContainer}>
-            <Text style={styles.bpmText}>{bpm} BPM</Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={70}
-              maximumValue={80}
-              value={bpm}
-              onValueChange={(value) => {
-                setBpm(Math.round(value));
-                setIsPlaying(false); // Stop playback when changing BPM
-              }}
-              minimumTrackTintColor="#2E7D32"
-              maximumTrackTintColor="#888"
-              thumbTintColor="#2E7D32"
-              step={1}
-            />
-            <View style={styles.bpmLabels}>
-              <Text style={styles.bpmLabel}>70</Text>
-              <Text style={styles.bpmLabel}>80</Text>
+            {/* BPM Slider */}
+            <View style={styles.sliderContainer}>
+              <Text style={styles.sliderLabel}>70</Text>
+              <Slider
+                style={styles.slider}
+                minimumValue={70}
+                maximumValue={80}
+                value={bpm}
+                onValueChange={(value) => setBpm(Math.round(value))}
+                step={1}
+                minimumTrackTintColor="#2E7D32"
+                maximumTrackTintColor="#ccc"
+                disabled={isPlaying}
+              />
+              <Text style={styles.sliderLabel}>80</Text>
             </View>
+
+            {/* Sensitivity Slider (not wired, just for UI) */}
+            {!isPlaying && (
+              <View style={styles.sensitivityContainer}>
+                <Text style={styles.sensitivityLabel}>Detection Sensitivity</Text>
+                <View style={styles.sliderContainer}>
+                  <Text style={styles.sliderLabel}>Low</Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={0}
+                    maximumValue={1}
+                    value={sensitivity}
+                    onValueChange={setSensitivity}
+                    step={0.1}
+                    minimumTrackTintColor="#FF9800"
+                    maximumTrackTintColor="#ccc"
+                  />
+                  <Text style={styles.sliderLabel}>High</Text>
+                </View>
+              </View>
+            )}
           </View>
 
-          {/* Play/Stop button */}
-          <View style={styles.controlsContainer}>
+          {/* Control buttons row */}
+          <View style={styles.controlsRow}>
             <TouchableOpacity
-              style={[styles.button, isPlaying && styles.stopButton]}
+              style={[styles.playButton, isPlaying && styles.stopButton]}
               onPress={toggle}
             >
-              <Text style={styles.buttonText}>
-                {isPlaying ? 'STOP' : 'START'}
+              <Text style={styles.playButtonText}>
+                {isPlaying ? "⏹ STOP" : "▶️ START"}
               </Text>
             </TouchableOpacity>
+
+            {!isPlaying && (
+              <>
+                <TouchableOpacity
+                  style={styles.calibrateButton}
+                  onPress={() => {/* Not wired */}}
+                >
+                  <Text style={styles.calibrateButtonText}>🎯 Calibrate</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.calibrateButton}
+                  onPress={() => {/* Not wired */}}
+                >
+                  <Text style={styles.calibrateButtonText}>🔍 Debug OFF</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
 
-          {/* Info Text */}
-          <View style={styles.infoContainer}>
-            <Text style={styles.infoText}>
-              {mode === 'tones' && 'Tones Mode: Musical tones for rhythm training'}
-              {mode === 'beats' && 'Beats Mode: Traditional metronome beats'}
-              {mode === 'wind' && 'Wind Mode: Nature sounds for relaxation'}
-            </Text>
+          {/* Feedback container */}
+          <View style={styles.feedbackContainer}>
+            <View style={styles.statusRow}>
+              <Text style={styles.statusText}>
+                {isPlaying ? "🎯 Playing..." : "✅ Ready"}
+              </Text>
+            </View>
+
+            <View style={styles.modeInfoContainer}>
+              <Text style={styles.modeInfoText}>
+                {mode === 'tones' && '🎵 Musical tones for rhythm training'}
+                {mode === 'beats' && '🥁 Traditional metronome beats'}
+                {mode === 'wind' && '🍃 Nature sounds for relaxation'}
+              </Text>
+            </View>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -144,34 +208,26 @@ const styles = StyleSheet.create({
   },
   safeContainer: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   container: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     flexGrow: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 50,
-    minHeight: screenHeight,
+    padding: 15,
+    paddingTop: 5,
   },
   header: {
     position: 'absolute',
-    top: 20,
-    right: 20,
-    zIndex: 100,
+    top: 10,
+    right: 10,
+    zIndex: 10,
   },
   logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    width: 150,
+    height: 60,
   },
   logo: {
     width: '100%',
@@ -179,39 +235,70 @@ const styles = StyleSheet.create({
   },
   golfBallContainer: {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -48 }, { translateY: -48 }],
-    zIndex: 20,
+    top: screenHeight * 0.15,
+    left: screenWidth * 0.5 - 48,
+    width: 96,
+    height: 96,
+    zIndex: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bpmControlsContainer: {
+    position: 'absolute',
+    left: 20,
+    top: screenHeight * 0.35,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  bpmButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#2E7D32',
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 5,
+  },
+  bpmButtonText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  bpmDisplay: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  bpmValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#2E7D32',
+  },
+  bpmLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+  metronomeArea: {
+    marginTop: screenHeight * 0.1,
+    width: '100%',
+    padding: 10,
+    alignItems: 'center',
   },
   modeContainer: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    zIndex: 100,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 15,
-    padding: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  modeLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  modeButtons: {
     flexDirection: 'row',
+    justifyContent: 'center',
     gap: 10,
+    marginBottom: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    padding: 15,
+    borderRadius: 15,
   },
   modeButton: {
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
     backgroundColor: '#f0f0f0',
     borderWidth: 2,
     borderColor: 'transparent',
@@ -221,85 +308,108 @@ const styles = StyleSheet.create({
     borderColor: '#2E7D32',
   },
   modeButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: '#333',
   },
   modeButtonTextActive: {
     color: 'white',
   },
-  bpmControlsContainer: {
-    position: 'absolute',
-    left: 20,
-    top: '50%',
-    transform: [{ translateY: -50 }],
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 15,
-    padding: 20,
-    width: 200,
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    padding: 10,
+    borderRadius: 10,
+  },
+  sliderLabel: {
+    fontSize: 12,
+    color: '#666',
+    minWidth: 25,
+  },
+  slider: {
+    flex: 1,
+    height: 40,
+    marginHorizontal: 10,
+  },
+  sensitivityContainer: {
+    width: '100%',
+    marginTop: 15,
+  },
+  sensitivityLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+    textAlign: 'center',
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 15,
+    marginTop: 10,
+  },
+  playButton: {
+    backgroundColor: '#2E7D32',
+    paddingHorizontal: 35,
+    paddingVertical: 12,
+    borderRadius: 25,
+    elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
-    elevation: 5,
-    zIndex: 30,
-  },
-  bpmText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    color: '#333',
-    marginBottom: 10,
-  },
-  slider: {
-    width: '100%',
-    height: 40,
-  },
-  bpmLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 5,
-  },
-  bpmLabel: {
-    fontSize: 12,
-    color: '#666',
-  },
-  controlsContainer: {
-    position: 'absolute',
-    bottom: 40,
-    alignItems: 'center',
-    zIndex: 100,
-  },
-  button: {
-    backgroundColor: '#2E7D32',
-    paddingHorizontal: 50,
-    paddingVertical: 20,
-    borderRadius: 50,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    elevation: 8,
   },
   stopButton: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#FF6B6B',
   },
-  buttonText: {
+  playButtonText: {
     color: 'white',
-    fontSize: 24,
+    fontSize: 16,
     fontWeight: 'bold',
-    letterSpacing: 2,
+    textAlign: 'center',
   },
-  infoContainer: {
-    position: 'absolute',
-    bottom: 120,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  calibrateButton: {
+    backgroundColor: '#FF9800',
     paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-    zIndex: 90,
+    paddingVertical: 12,
+    borderRadius: 25,
   },
-  infoText: {
+  calibrateButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  feedbackContainer: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 20,
+    minHeight: 100,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 15,
+    padding: 15,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  modeInfoContainer: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    width: '100%',
+  },
+  modeInfoText: {
     fontSize: 14,
     color: '#333',
     textAlign: 'center',
