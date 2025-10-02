@@ -1,272 +1,284 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, ImageBackground, Image, Dimensions } from 'react-native';
-import Slider from '@react-native-community/slider';
-import { usePuttIQDetector } from '../hooks/usePuttIQDetector'; // Using the new detector hook
-import TimingZoneBar from '../components/TimingZoneBar';
-import SteppedGolfBall from '../components/SteppedGolfBall';
+import { StyleSheet, Text, View, TouchableOpacity, ImageBackground, Image, Dimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { height: screenHeight } = Dimensions.get('window');
+
+// Dynamic sizing calculations
+const CONTROL_BARS_BOTTOM = 10; // Distance from screen bottom to control bars container
+const ICON_BAR_HEIGHT = 48; // Icon bar height
+const BAR_GAP = 6; // Gap between BPM and icon bars
+const BPM_BAR_HEIGHT = 48; // BPM bar height
+const VIDEO_MARGIN_TOP = 10;
+const VIDEO_HEIGHT = 31;
+const VIDEO_BORDER = 4; // Border thickness (2px top + 2px bottom)
+const BALL_TOP_GAP = 0; // Gap between video bar and ball (ball image has built-in padding)
+const BALL_BOTTOM_GAP = 35; // Gap between ball and BPM bar top
+
+
 
 export default function HomeScreen({ user }) {
-  const [isPremium, setIsPremium] = useState(user?.isPremium || false);
-  const [sensitivity, setSensitivity] = useState(0.5);
-  
-  const {
-    isInitialized,
-    isRunning,
-    permissionGranted,
-    aecActive,
-    bpm,
-    lastHit,
-    detectorStats,
-    beatPosition,
-    hitHistory,
-    debugMode,
-    updateBpm,
-    updateSensitivity,
-    getTimingAccuracy,
-    resetCalibration,
-    toggleDebugMode,
-    start,
-    stop,
-  } = usePuttIQDetector(user?.settings?.defaultBPM || 30) || {};
+  const [soundType, setSoundType] = useState('tone'); // 'tone', 'beat', 'wind'
+  // Ensure BPM is within 70-80 range
+  const initialBpm = Math.max(70, Math.min(80, user?.settings?.defaultBPM || 75));
+  const [bpm, setBpm] = useState(initialBpm);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [videoKey, setVideoKey] = useState(`tone-${initialBpm}`); // Track video key for re-rendering
 
-  // Update sensitivity when slider changes
+  const updateBpm = (newBpm) => {
+    setBpm(Math.max(70, Math.min(80, Math.round(newBpm))));
+  };
+
+  // Video map - define all available videos here
+  // As new videos are added, add them to this map
+  const videoMap = {
+    'tone-70': require('../assets/swingBars/tones/Tones_70BPM.mp4'),
+    'tone-71': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    'tone-72': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    'tone-73': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    'tone-74': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    'tone-75': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    'tone-76': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    'tone-77': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    'tone-78': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    'tone-79': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    'tone-80': require('../assets/swingBars/tones/Tones_70BPM.mp4'), // Fallback
+    // Beat videos
+    'beat-70': require('../assets/swingBars/beats/Beats_70BPM.mp4'),
+    'beat-71': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    'beat-72': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    'beat-73': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    'beat-74': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    'beat-75': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    'beat-76': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    'beat-77': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    'beat-78': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    'beat-79': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    'beat-80': require('../assets/swingBars/beats/Beats_70BPM.mp4'), // Fallback to 70
+    // Wind videos
+    'wind-70': require('../assets/swingBars/wind/Wind_70BPM.mp4'),
+    'wind-71': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+    'wind-72': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+    'wind-73': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+    'wind-74': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+    'wind-75': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+    'wind-76': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+    'wind-77': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+    'wind-78': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+    'wind-79': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+    'wind-80': require('../assets/swingBars/wind/Wind_70BPM.mp4'), // Fallback to 70
+  };
+
+  // Get video source based on sound type and BPM
+  const getVideoSource = (type, bpmValue) => {
+    const key = `${type}-${bpmValue}`;
+    console.log(`🎬 Looking for video key: ${key}`);
+    const source = videoMap[key] || require('../assets/swingBars/tones/Tones_70BPM.mp4');
+    console.log(`🎬 Video source found:`, source);
+    return source;
+  };
+
+  // Get current video source
+  const currentVideoSource = getVideoSource(soundType, bpm);
+
+  // Create video player with current source - key forces re-mount when video changes
+  const player = useVideoPlayer(currentVideoSource, player => {
+    player.loop = true;
+  });
+
+  // Update video key when BPM or sound type changes (only when stopped)
   useEffect(() => {
-    if (updateSensitivity) {
-      updateSensitivity(sensitivity);
+    if (!isPlaying) {
+      const newKey = `${soundType}-${bpm}`;
+      console.log(`🎥 Video changed to: ${newKey}`);
+      setVideoKey(newKey);
     }
-  }, [sensitivity, updateSensitivity]);
+  }, [bpm, soundType]);
 
-  const toggle = () => {
-    if (isRunning) {
-      stop();
+  // Toggle play/pause when ball is clicked
+  const handleBallPress = () => {
+    console.log(`⚽ Ball clicked! isPlaying: ${isPlaying}, soundType: ${soundType}, bpm: ${bpm}`);
+    if (isPlaying) {
+      console.log('⏸️ Pausing video');
+      player.pause();
+      setIsPlaying(false);
     } else {
-      start();
+      console.log('▶️ Playing video');
+      player.play();
+      setIsPlaying(true);
     }
   };
 
-  // Calculate timing accuracy
-  const timingInfo = getTimingAccuracy ? getTimingAccuracy() : null;
+  const insets = useSafeAreaInsets();
 
-  // Get quality color based on hit quality
-  const getQualityColor = (quality) => {
-    switch (quality) {
-      case 'strong': return '#2E7D32';
-      case 'medium': return '#FFA726';
-      case 'weak': return '#EF5350';
-      default: return '#888';
-    }
-  };
+  // Calculate the actual position of the BPM bar top edge from screen bottom
+  const bpmBarTopFromBottom = insets.bottom + CONTROL_BARS_BOTTOM + ICON_BAR_HEIGHT + BAR_GAP;
 
-  // Get timing color based on accuracy
-  const getTimingColor = (accuracy) => {
-    if (!accuracy) return '#888';
-    if (accuracy > 0.8) return '#2E7D32'; // Great
-    if (accuracy > 0.5) return '#FFA726'; // Good
-    return '#EF5350'; // Needs work
-  };
+  // Calculate the bottom of the video bar from screen top
+  const videoBarBottom = VIDEO_MARGIN_TOP + VIDEO_HEIGHT + VIDEO_BORDER;
+
+  // Available space for ball: from bottom of video bar to top of BPM bar, minus gaps
+  const availableHeight = screenHeight - videoBarBottom - BALL_TOP_GAP - bpmBarTopFromBottom - BALL_BOTTOM_GAP;
+
+  // Ball size: MainBall.jpg has no padding, use 80% of available height
+  const golfBallSize = Math.min(600, Math.max(150, availableHeight * 0.80));
+
+  // Position ball: bottom offset = distance to BPM bar top + gap
+  const ballBottomOffset = bpmBarTopFromBottom + BALL_BOTTOM_GAP;
+
+  // Debug logging
+  console.log('🏌️ Golf Ball Debug:', {
+    screenHeight,
+    insetsBottom: insets.bottom,
+    videoBarBottom,
+    bpmBarTopFromBottom,
+    availableHeightWithGaps: availableHeight,
+    availableHeightWithoutGaps: screenHeight - videoBarBottom - bpmBarTopFromBottom,
+    gaps: BALL_TOP_GAP + BALL_BOTTOM_GAP,
+    finalBallSize: golfBallSize,
+    ballBottomOffset,
+    spaceUsagePercent: ((golfBallSize / availableHeight) * 100).toFixed(1) + '%',
+  });
+
 
   return (
-    <ImageBackground 
-      source={require('../assets/grass-background.jpeg')} 
+    <ImageBackground
+      source={require('../assets/grass-background.jpeg')}
       style={styles.backgroundImage}
       resizeMode="cover"
     >
-      <SafeAreaView style={styles.safeContainer}>
-        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        {/* Logo in top-right corner */}
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Image 
-              source={require('../assets/puttiq-logo.jpg')} 
-              style={styles.logo}
+      {/* Tone Bar Video - At top of screen (outside safe area to stick to physical top) */}
+      <View style={styles.videoContainer}>
+        <VideoView
+          player={player}
+          style={styles.video}
+          contentFit="contain"
+          nativeControls={false}
+        />
+      </View>
+      <SafeAreaView style={styles.safeContainer} edges={['left','right','bottom']}>
+
+        <View style={styles.container}>
+          {/* Golf ball - centered in available space */}
+          <TouchableOpacity
+            style={[styles.golfBallContainer, { bottom: ballBottomOffset }]}
+            onPress={handleBallPress}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={require('../assets/ball/MainBall.png')}
+              style={[styles.golfBall, { width: golfBallSize, height: golfBallSize }]}
               resizeMode="contain"
             />
-          </View>
-        </View>
-
-        {/* Golf ball in center with color transitions */}
-        <View style={styles.golfBallContainer}>
-          <SteppedGolfBall
-            size={96}
-            beatPosition={beatPosition}
-            isHit={lastHit !== null && Date.now() - lastHit.timestamp < 500}
-            hitQuality={lastHit?.quality}
-          />
-        </View>
-
-        {/* BPM Controls on left side */}
-        <View style={styles.bpmControlsContainer}>
-          <TouchableOpacity 
-            style={styles.bpmButton} 
-            onPress={() => updateBpm(Math.max(30, bpm - 1))}
-            disabled={isRunning}
-          >
-            <Text style={styles.bpmButtonText}>-</Text>
+            <View style={styles.ballTextContainer}>
+              <Text style={styles.ballText}>
+                {isPlaying ? 'CLICK TO STOP' : 'CLICK TO START'}
+              </Text>
+            </View>
           </TouchableOpacity>
-          <View style={styles.bpmDisplay}>
-            <Text style={styles.bpmValue}>{bpm}</Text>
-            <Text style={styles.bpmLabel}>BPM</Text>
-          </View>
-          <TouchableOpacity 
-            style={styles.bpmButton} 
-            onPress={() => updateBpm(Math.min(60, bpm + 1))}
-            disabled={isRunning}
-          >
-            <Text style={styles.bpmButtonText}>+</Text>
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.metronomeArea}>
-          <View style={styles.sliderContainer}>
-            <Text style={styles.sliderLabel}>30</Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={30}
-              maximumValue={60}
-              value={bpm}
-              onValueChange={updateBpm}
-              step={1}
-              minimumTrackTintColor="#2E7D32"
-              maximumTrackTintColor="#ccc"
-              disabled={isRunning}
-            />
-            <Text style={styles.sliderLabel}>60</Text>
-          </View>
-
-          {!isRunning && (
-            <View style={styles.sensitivityContainer}>
-              <Text style={styles.sensitivityLabel}>Detection Sensitivity</Text>
-              <View style={styles.sliderContainer}>
-                <Text style={styles.sliderLabel}>Low</Text>
-                <Slider
-                  style={styles.slider}
-                  minimumValue={0}
-                  maximumValue={1}
-                  value={sensitivity}
-                  onValueChange={setSensitivity}
-                  step={0.1}
-                  minimumTrackTintColor="#FF9800"
-                  maximumTrackTintColor="#ccc"
+          {/* Control Bars - Fixed at bottom center */}
+          <View style={styles.controlBarsContainer}>
+            {/* BPM Bar - Top */}
+            <View style={[styles.bpmBar, isPlaying && styles.disabledBar]}>
+              <TouchableOpacity
+                style={styles.barSection}
+                onPress={() => updateBpm(bpm - 1)}
+                disabled={isPlaying}
+              >
+                <Image
+                  source={require('../assets/icons/minus.png')}
+                  style={styles.iconImage}
+                  resizeMode="contain"
                 />
-                <Text style={styles.sliderLabel}>High</Text>
+              </TouchableOpacity>
+
+              <View style={styles.verticalDivider} />
+
+              <View style={styles.barSection}>
+                <Text style={styles.bpmValue}>{bpm}</Text>
               </View>
+
+              <View style={styles.verticalDivider} />
+
+              <TouchableOpacity
+                style={styles.barSection}
+                onPress={() => updateBpm(bpm + 1)}
+                disabled={isPlaying}
+              >
+                <Image
+                  source={require('../assets/icons/plus.png')}
+                  style={styles.iconImage}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
             </View>
-          )}
-        </View>
 
-        <View style={styles.controlsRow}>
-          <TouchableOpacity
-            style={[styles.playButton, isRunning && styles.stopButton, !isInitialized && styles.disabledButton]}
-            onPress={toggle}
-            disabled={!isInitialized}
-          >
-            <Text style={styles.playButtonText}>
-              {isRunning ? "⏹ STOP" : "▶️ START"}
-            </Text>
-          </TouchableOpacity>
-
-          {!isRunning && isInitialized && (
-            <>
+            {/* Sound Type Bar - Bottom */}
+            <View style={[styles.iconBar, isPlaying && styles.disabledBar]}>
               <TouchableOpacity
-                style={styles.calibrateButton}
-                onPress={resetCalibration}
+                style={[styles.barSection, soundType === 'tone' && styles.selectedSection]}
+                onPress={() => {
+                  console.log('🎵 Tone selected');
+                  setSoundType('tone');
+                }}
+                disabled={isPlaying}
               >
-                <Text style={styles.calibrateButtonText}>🎯 Calibrate</Text>
+                <Image
+                  source={require('../assets/icons/musical-note.png')}
+                  style={styles.iconImage}
+                  resizeMode="contain"
+                />
               </TouchableOpacity>
-              
+
+              <View style={styles.verticalDivider} />
+
               <TouchableOpacity
-                style={[styles.calibrateButton, debugMode && styles.debugActive]}
-                onPress={toggleDebugMode}
+                style={[styles.barSection, soundType === 'beat' && styles.selectedSection]}
+                onPress={() => {
+                  console.log('🥁 Beat selected');
+                  setSoundType('beat');
+                }}
+                disabled={isPlaying}
               >
-                <Text style={styles.calibrateButtonText}>
-                  {debugMode ? '🔍 Debug ON' : '🔍 Debug OFF'}
-                </Text>
+                <Image
+                  source={require('../assets/icons/metronome.png')}
+                  style={styles.iconImage}
+                  resizeMode="contain"
+                />
               </TouchableOpacity>
-            </>
-          )}
-        </View>
 
-        {/* Visual timing bar with listening zone */}
-        {isRunning && (
-          <TimingZoneBar
-            isPlaying={isRunning}
-            bpm={bpm}
-            currentPosition={beatPosition}
-            listeningZone={{ start: 0.2, end: 0.8 }}
-            lastHitPosition={lastHit?.positionInBeat}
-            hitHistory={hitHistory}
-            style={styles.timingBar}
-          />
-        )}
+              <View style={styles.verticalDivider} />
 
-        <View style={styles.feedbackContainer}>
-          <View style={styles.statusRow}>
-            <Text style={[styles.statusText, !isInitialized && styles.statusWarning]}>
-              {!isInitialized ? "⏳ Initializing..." : 
-               !permissionGranted ? "🎤 Microphone permission needed" : 
-               isRunning ? "🎯 Listening for impacts..." : "✅ Ready"}
-            </Text>
-            {isRunning && aecActive && (
-              <Text style={styles.aecIndicator}>🔊 AEC</Text>
-            )}
+              <TouchableOpacity
+                style={[styles.barSection, soundType === 'wind' && styles.selectedSection]}
+                onPress={() => {
+                  console.log('💨 Wind selected');
+                  setSoundType('wind');
+                }}
+                disabled={isPlaying}
+              >
+                <Image
+                  source={require('../assets/icons/wind.png')}
+                  style={styles.iconImage}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {lastHit && isRunning && (
-            <View style={[styles.hitFeedback, { borderColor: getQualityColor(lastHit.quality) }]}>
-              <View style={styles.hitHeader}>
-                <Text style={[styles.hitTiming, { color: getQualityColor(lastHit.quality) }]}>
-                  Impact Detected!
-                </Text>
-                <Text style={[styles.qualityBadge, { backgroundColor: getQualityColor(lastHit.quality) }]}>
-                  {lastHit.quality?.toUpperCase()}
-                </Text>
-              </View>
-
-              {timingInfo && (
-                <View style={styles.timingRow}>
-                  <Text style={[styles.timingText, { color: getTimingColor(timingInfo.accuracy) }]}>
-                    {timingInfo.isEarly ? '⏪ Early' : timingInfo.isLate ? 'Late ⏩' : 'Perfect!'} 
-                  </Text>
-                  <Text style={styles.timingValue}>
-                    {Math.abs(timingInfo.timingDiff).toFixed(0)}ms
-                  </Text>
-                  <Text style={[styles.accuracyText, { color: getTimingColor(timingInfo.accuracy) }]}>
-                    {(timingInfo.accuracy * 100).toFixed(0)}%
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.hitDetails}>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>Energy</Text>
-                  <Text style={styles.detailValue}>{lastHit.energy.toFixed(4)}</Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>Confidence</Text>
-                  <Text style={styles.detailValue}>{(lastHit.confidence * 100).toFixed(0)}%</Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>ZCR</Text>
-                  <Text style={styles.detailValue}>{lastHit.zcr.toFixed(3)}</Text>
-                </View>
-              </View>
+          {/* Bottom section with logo */}
+          <View style={styles.bottomSection}>
+            <View style={styles.logoContainer}>
+              <Image
+                source={require('../assets/puttiq-logo.jpg')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
             </View>
-          )}
-
-          {detectorStats && isRunning && (
-            <View style={styles.statsContainer}>
-              <Text style={styles.statsTitle}>Session Stats</Text>
-              <View style={styles.statsRow}>
-                <Text style={styles.statsLabel}>Hits: {detectorStats.detectionsFound}</Text>
-                <Text style={styles.statsLabel}>Frames: {detectorStats.framesProcessed}</Text>
-                <Text style={styles.statsLabel}>Baseline: {detectorStats.currentBaseline.toFixed(6)}</Text>
-              </View>
-            </View>
-          )}
+          </View>
         </View>
-        </ScrollView>
       </SafeAreaView>
     </ImageBackground>
   );
@@ -285,274 +297,148 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  scrollContent: {
-    flexGrow: 1,
-    padding: 15,
-    paddingTop: 5,
-  },
-  header: {
+  golfBallContainer: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    zIndex: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ballTextContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ballText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: 1,
+  },
+  controlBarsContainer: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  golfBall: {
+    // Dynamic size set inline based on screen height
+  },
+  bottomSection: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
   },
   logoContainer: {
-    width: 150,
-    height: 60,
+    width: 151,
+    height: 59,
   },
   logo: {
     width: '100%',
     height: '100%',
   },
-  golfBallContainer: {
-    position: 'absolute',
-    top: screenHeight * 0.15,
-    left: screenWidth * 0.5 - 48,
-    width: 96,
-    height: 96,
-    zIndex: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bpmControlsContainer: {
-    position: 'absolute',
-    left: 20,
-    top: screenHeight * 0.35,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 10,
-    padding: 10,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  bpmButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: '#2E7D32',
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginVertical: 5,
-  },
-  bpmButtonText: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  bpmDisplay: {
-    alignItems: 'center',
-    marginVertical: 10,
-  },
-  bpmValue: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#2E7D32',
-  },
-  bpmLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  metronomeArea: {
-    marginTop: screenHeight * 0.1,
-    width: '100%',
-    padding: 10,
-    alignItems: 'center',
-  },
-  sliderContainer: {
+  bpmBar: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#333',
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
-    marginBottom: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    padding: 10,
-    borderRadius: 10,
-  },
-  sliderLabel: {
-    fontSize: 12,
-    color: '#666',
-    minWidth: 25,
-  },
-  slider: {
-    flex: 1,
-    height: 40,
-    marginHorizontal: 10,
-  },
-  sensitivityContainer: {
-    width: '100%',
-    marginTop: 15,
-  },
-  sensitivityLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-    textAlign: 'center',
-  },
-  controlsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 15,
-    marginTop: 10,
-  },
-  playButton: {
-    backgroundColor: '#2E7D32',
-    paddingHorizontal: 35,
-    paddingVertical: 12,
-    borderRadius: 25,
+    maxWidth: 256,
+    height: 48,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
-  stopButton: {
-    backgroundColor: '#FF6B6B',
-  },
-  disabledButton: {
-    backgroundColor: '#ccc',
-  },
-  playButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  calibrateButton: {
-    backgroundColor: '#FF9800',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-  },
-  calibrateButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  feedbackContainer: {
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 20,
-    minHeight: 100,
+  iconBar: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 15,
-    padding: 15,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  statusText: {
-    fontSize: 14,
-    color: '#666',
-    fontStyle: 'italic',
-  },
-  statusWarning: {
-    color: '#FF9800',
-  },
-  aecIndicator: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '600',
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  hitFeedback: {
-    marginTop: 15,
-    width: '100%',
-    backgroundColor: '#F5F5F5',
-    padding: 12,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#2E7D32',
-  },
-  hitHeader: {
+    borderColor: '#333',
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
-  },
-  hitTiming: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  qualityBadge: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: 'bold',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  timingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#E0E0E0',
-    marginBottom: 10,
-  },
-  timingText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  timingValue: {
-    fontSize: 14,
-    color: '#666',
-  },
-  accuracyText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  hitDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  detailItem: {
-    alignItems: 'center',
-  },
-  detailLabel: {
-    fontSize: 11,
-    color: '#888',
-    marginBottom: 2,
-  },
-  detailValue: {
-    fontSize: 13,
-    color: '#333',
-    fontWeight: '500',
-  },
-  statsContainer: {
-    marginTop: 15,
-    padding: 10,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
     width: '100%',
+    maxWidth: 256,
+    height: 48,
+    marginTop: 8,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
-  statsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 5,
+  barSection: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%',
+  },
+  verticalDivider: {
+    width: 1,
+    height: '70%',
+    backgroundColor: '#ddd',
+  },
+  barButtonText: {
+    color: '#333',
+    fontSize: 26,
+    fontWeight: 'bold',
     textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+    lineHeight: 26,
   },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+  bpmValue: {
+    fontSize: 29,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
-  statsLabel: {
-    fontSize: 11,
-    color: '#888',
+  selectedSection: {
+    backgroundColor: '#e8f5e9',
+    borderRadius: 10,
   },
-  timingBar: {
-    marginVertical: 10,
-    marginHorizontal: 5,
+  iconImage: {
+    width: 24,
+    height: 24,
   },
-  debugActive: {
-    backgroundColor: '#FF9800',
+  disabledBar: {
+    opacity: 0.5,
+  },
+  videoContainer: {
+    marginTop: 10,
+    marginHorizontal: 30,
+    backgroundColor: '#000',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#fff',
+    overflow: 'hidden',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  video: {
+    width: '100%',
+    height: VIDEO_HEIGHT,
+    backgroundColor: 'transparent',
   },
 });

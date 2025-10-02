@@ -18,16 +18,13 @@ export class DetectorFactory {
     switch (detectorType) {
       case 'expo':
         return this.createExpoDetector(options);
-      
-      case 'picovoice':
-        return this.createPicovoiceDetector(options);
-      
+
       case 'simple':
         return this.createSimpleDetector(options);
-      
+
       case 'debug':
         return this.createDebugDetector(options);
-      
+
       default:
         throw new Error(`Unknown detector type: ${detectorType}`);
     }
@@ -53,16 +50,6 @@ export class DetectorFactory {
       console.log('ExpoPlayAudioStream not available (expected in Expo Go)');
     }
 
-    // Try to load Picovoice (requires native linking)
-    try {
-      const VoiceProcessor = require('@picovoice/react-native-voice-processor').default;
-      if (VoiceProcessor && typeof VoiceProcessor.start === 'function') {
-        return 'picovoice';
-      }
-    } catch (e) {
-      console.log('Picovoice not available (expected in Expo Go)');
-    }
-
     // Fallback to simple detector for basic functionality
     // This will work in Expo Go
     if (Platform.OS === 'ios' || Platform.OS === 'android') {
@@ -80,14 +67,6 @@ export class DetectorFactory {
   static createExpoDetector(options) {
     const { PutterDetectorExpo } = require('./PutterDetectorExpo');
     return new PutterDetectorExpo(options);
-  }
-
-  /**
-   * Create a Picovoice based detector
-   */
-  static createPicovoiceDetector(options) {
-    const { PutterDetector } = require('./PutterDetector');
-    return new PutterDetector(options);
   }
 
   /**
@@ -120,7 +99,6 @@ export class DetectorFactory {
   static async getCapabilities() {
     const capabilities = {
       expo: false,
-      picovoice: false,
       simple: true,
       debug: __DEV__,
       platform: Platform.OS,
@@ -131,14 +109,6 @@ export class DetectorFactory {
     try {
       const { ExpoPlayAudioStream } = require('@cjblack/expo-audio-stream');
       capabilities.expo = !!ExpoPlayAudioStream;
-    } catch (e) {
-      // Not available
-    }
-
-    // Check Picovoice capability
-    try {
-      const VoiceProcessor = require('@picovoice/react-native-voice-processor').default;
-      capabilities.picovoice = !!VoiceProcessor;
     } catch (e) {
       // Not available
     }

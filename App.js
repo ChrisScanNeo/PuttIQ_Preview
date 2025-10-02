@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
 // Using MinimalNavigator for simplified UI
 import MinimalNavigator from './MinimalNavigator';
@@ -56,10 +57,10 @@ export default function App() {
   }
   
   return (
-    <>
+    <SafeAreaProvider>
       <MinimalNavigator user={user} />
       <StatusBar style="auto" />
-    </>
+    </SafeAreaProvider>
   );
 }
 

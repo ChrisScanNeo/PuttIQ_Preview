@@ -1,47 +1,47 @@
 # PuttIQ2 - Putting Rhythm Trainer Development Guide
 
 ## 🚀 Current Progress Summary
-**Last Updated:** December 3, 2024
+**Last Updated:** September 30, 2025
 
 ### ✅ Completed Features:
 - **Project Setup** - Expo SDK 53 with React Native configured for Codespaces
 - **Device Authentication** - Automatic login using device IDs (iOS vendor ID, Android ID) - NO Google Sign-In
 - **Firebase Integration** - Firestore database with offline support and real configuration values
-- **Enhanced Audio System** - Simultaneous speaker playback + microphone recording via Expo Dev Client
-- **Microphone Hit Detection** - Real-time hit detection with timing accuracy (using @cjblack/expo-audio-stream)
-- **Core UI Components** - Home screen with tempo slider (60-100 BPM)
-- **Visual Feedback** - Beat indicator dots that alternate with tempo
 - **Landscape Orientation** - App locked to landscape mode for golf stance
-- **Metronome Controls** - Start/Stop button with visual state changes
 - **Offline Support** - AsyncStorage cached user data with Firebase fallback
-- **Haptic Support** - Optional haptic feedback (disabled by default)
-- **Timing Bar Animation** - Horizontal bar with moving marker (back-and-forth motion)
-- **Responsive Layout** - ScrollView to prevent overflow in landscape mode
 - **EAS Build Configuration** - Custom dev client builds for iOS/Android
 - **iOS Audio Session** - Custom plugin for AVAudioSessionCategoryPlayAndRecord with speaker output
-- **Hit Accuracy Display** - Shows timing accuracy percentage and feedback messages
+- **Video-Based Timing System** - MP4 video bars for visual timing feedback (70-80 BPM)
+- **BPM Control** - BPM slider with +/- buttons (70-80 BPM range)
+- **Sound Type Selection** - Three sound types: Tone, Beat, Wind with custom icons
+- **Interactive Golf Ball** - Clickable golf ball with "CLICK TO START/STOP" text overlay
+- **Dynamic Video Loading** - Automatically loads correct video based on BPM and sound type
+- **Control Locking** - BPM and sound type controls disabled during playback
+- **Custom Icon System** - PNG icons for all UI controls (plus, minus, musical-note, metronome, wind)
+- **Responsive Golf Ball** - SVG/PNG golf ball that scales to 90% of available screen space
 
 ### 🔧 In Progress:
-- **iPhone Testing** - Testing hit detection on real device (build completed, ready for testing)
-- **Threshold Tuning** - Fine-tuning microphone sensitivity for optimal hit detection
+- **Complete Video Library** - Adding remaining BPM variations (71-80) for all sound types
 
 ### ❌ Not Yet Implemented:
-- **Golf Ball Graphics** - No visual golf ball component
+- **Microphone Hit Detection** - Real-time putter hit detection (old system needs updating)
+- **Hit Accuracy Display** - Timing accuracy feedback and scoring
 - **In-App Purchase** - react-native-iap NOT installed (needs to be added)
 - **Settings Screen** - No UI for preferences (backend ready)
-- **Practice Statistics** - No session tracking or progress display beyond current session
+- **Practice Statistics** - No session tracking or progress display
 
-### ⚠️ Known Issues:
-- **Expo Go Limitation** - Hit detection ONLY works in custom dev client, not Expo Go
-- **Animation library** - react-native-reanimated installed but may have Codespaces issues
-- **Duplicate directories** - /assets/sounds/ empty (can be removed)
+### ⚠️ Current Video Library Status:
+- ✅ **Tone_70BPM.mp4** - Available
+- ✅ **Beat_70BPM.mp4** - Available
+- ✅ **Wind_70BPM.mp4** - Available
+- ⏳ **71-80 BPM variations** - Need to be uploaded for all three types (30 files total)
 
 ### 📅 Priority Next Steps:
-1. Test hit detection on iPhone device
-2. Tune microphone sensitivity thresholds
-3. Create settings screen UI
-4. Implement in-app purchase flow
-5. Add practice statistics/history
+1. Upload remaining video files (71-80 BPM for Tone, Beat, Wind)
+2. Test all video transitions work correctly
+3. Re-implement microphone hit detection with new UI
+4. Add timing accuracy feedback system
+5. Implement in-app purchase flow
 
 ---
 
@@ -54,14 +54,15 @@
   - `App.js` - ScreenOrientation.lockAsync(LANDSCAPE)
 - **Platforms:** iOS and Android
 
-### Audio Configuration
-- **Metronome Sound:** `/assets/sound/metronome-85688.mp3`
-- **Audio Library:** @cjblack/expo-audio-stream for simultaneous playback/recording
-- **iOS Session:** AVAudioSessionCategoryPlayAndRecord with DefaultToSpeaker
-- **Hit Detection:** Real-time amplitude monitoring with -15 dB threshold
-- **Preloaded:** Yes (for instant playback)
-- **Volume:** 70%
-- **Works in Silent Mode:** Yes (iOS)
+### Video & Audio Configuration
+- **Video System:** MP4 video files with embedded audio for timing bars
+- **Video Location:** `/assets/swingBars/{soundType}/{SoundType}_{BPM}BPM.mp4`
+  - Tone videos: `/assets/swingBars/tones/Tones_70BPM.mp4` (etc.)
+  - Beat videos: `/assets/swingBars/beats/Beats_70BPM.mp4` (etc.)
+  - Wind videos: `/assets/swingBars/wind/Wind_70BPM.mp4` (etc.)
+- **Video Player:** expo-video with looping enabled
+- **BPM Range:** 70-80 BPM
+- **Dynamic Loading:** Videos load based on selected sound type + BPM combination
 
 ### Firebase Setup
 - **Authentication:** Device-based (automatic)
@@ -82,19 +83,22 @@
 
 ## 🎯 Project Overview
 A React Native mobile app that helps golfers perfect their putting rhythm using:
-- Smooth, animated metronome bar and golf ball
-- Audio feedback from microphone to detect putter hits
-- Simple timing accuracy feedback
-- One-time unlock via in-app purchase (iOS & Android)
+- Video-based timing bars with synchronized audio (70-80 BPM)
+- Three sound types: Tone, Beat, Wind
+- Interactive golf ball for play/pause control
+- BPM adjustment with visual feedback
+- Simple timing accuracy feedback (future feature)
+- One-time unlock via in-app purchase (iOS & Android - future feature)
 
 ## 🛠 Tech Stack
 | Layer       | Tool / Framework                   | Purpose                                 |
 |------------|-------------------------------------|------------------------------------------|
 | UI          | React Native with Expo SDK 53      | Cross-platform framework                 |
-| Animations  | react-native-reanimated            | Complex animations (installed)           |
-| Graphics    | react-native-svg                   | Custom vector shapes, animations         |
-| Audio       | @cjblack/expo-audio-stream         | Simultaneous playback + recording        |
-| Audio Session | Custom Expo Config Plugin        | iOS AVAudioSession configuration         |
+| Video       | expo-video                         | MP4 video playback with looping         |
+| Graphics    | react-native-svg                   | Golf ball and icon rendering            |
+| Icons       | Custom PNG assets                  | UI control icons (assets/icons/)        |
+| Storage     | AsyncStorage                       | Local data caching                      |
+| Backend     | Firebase Firestore                 | User data storage (device-based auth)   |
 | Build       | EAS Build with Dev Client          | Custom native builds                     |
 | Payments    | react-native-iap (not yet installed) | App Store and Play Store IAP          |
 
@@ -358,21 +362,16 @@ SoundLevel.onNewFrame = (data) => {
 ## 📚 Key Libraries & Resources
 
 ### Currently Installed:
-- **expo-av** - Audio playback (deprecated in SDK 54 but working)
-- **@react-native-community/slider** - BPM tempo control
+- **expo-video** - MP4 video playback with looping
 - **expo-screen-orientation** - Landscape lock
-- **expo-haptics** - Tactile feedback
 - **firebase** - Backend and data storage
 - **@react-native-async-storage/async-storage** - Local data caching
-- **react-native-svg** - Vector graphics (installed, not yet used)
-- **react-native-iap** - In-app purchases (NOT FOUND - needs installation)
-
-### Removed/Not Working:
-- ~~react-native-reanimated~~ - Removed due to Codespaces compatibility issues
+- **react-native-svg** - Vector graphics for golf ball
+- **react-native-safe-area-context** - Safe area handling
 
 ### To Be Added:
-- Microphone detection library (TBD)
-- Alternative animation solution (TBD)
+- **react-native-iap** - In-app purchases (needs installation)
+- **@cjblack/expo-audio-stream** - For microphone hit detection (future feature)
 
 ---
 
@@ -397,11 +396,15 @@ npm run web
 4. App will auto-reload on file changes
 
 ### Key Files to Edit:
-- **UI:** `/screens/HomeScreen.js`
-- **Audio:** `/services/audio.js`
-- **Metronome Logic:** `/hooks/useMetronome.js`
-- **Firebase Config:** `/services/firebase.js`
-- **App Entry:** `/App.js`
+- **Main UI:** `/screens/HomeScreen.js` - Main app interface with video player
+- **Navigator:** `/MinimalNavigator.js` - Simple navigation wrapper
+- **Firebase Config:** `/services/firebase.js` - Backend configuration
+- **Auth:** `/services/auth.js` - Device-based authentication
+- **App Entry:** `/App.js` - Application entry point
+- **Assets:**
+  - `/assets/swingBars/` - Video files organized by sound type
+  - `/assets/icons/` - Custom PNG icons
+  - `/assets/ball/` - Golf ball images (PNG/SVG)
 
 ## 🧑‍💻 Development Commands
 ```bash
@@ -423,30 +426,34 @@ eas build --platform android
 
 ## 📱 Current App Status
 
-### What's Working Now:
-- ✅ App launches in landscape mode
-- ✅ Metronome plays tick sound at selected BPM
-- ✅ Start/Stop button controls playback
-- ✅ BPM slider adjusts tempo (60-100)
-- ✅ Visual dots indicate beat
+### What's Working Now (v2.0):
+- ✅ App launches in landscape mode with grass background
+- ✅ Video timing bars display at top of screen
+- ✅ Interactive golf ball with click to start/stop text
+- ✅ BPM control (70-80) with +/- buttons using custom icons
+- ✅ Sound type selection (Tone/Beat/Wind) with custom icons
+- ✅ Dynamic video loading based on BPM + sound type
+- ✅ Controls lock during playback (dimmed at 50% opacity)
+- ✅ Video loops continuously when playing
 - ✅ Firebase stores user data (when online)
 - ✅ Works offline with cached data
 - ✅ No login required (device-based auth)
+- ✅ Responsive layout with safe areas
 
 ### What's Not Yet Implemented:
-- ❌ Visual metronome bar animation
-- ❌ Golf ball graphic
+- ❌ Complete video library (only 70 BPM available for each type)
 - ❌ Microphone hit detection
-- ❌ Timing accuracy feedback
+- ❌ Timing accuracy feedback and scoring
 - ❌ In-app purchase unlock
 - ❌ Settings screen
-- ❌ Practice history/stats
-- ❌ Different sound options
+- ❌ Practice history/stats tracking
 
-## 📝 Notes
-- Always test IAP with sandbox/test accounts first
-- Ensure microphone permissions are clearly explained to users
-- Keep animations at 60 FPS for best user experience
-- Consider offline functionality for core features
-- Landscape orientation optimized for golf stance
-- when we make a change, andd it is readdy to test, commit it to git and push with notes, so I can sync my local device and test
+## 📝 Notes & Best Practices
+- **Video Files:** Use naming convention `{SoundType}_{BPM}BPM.mp4` (e.g., Tones_75BPM.mp4)
+- **Git Workflow:** Commit and push changes after testing, include descriptive notes
+- **Testing:** Test on actual devices via custom dev client (Expo Go has limitations)
+- **Video Loading:** React Native requires static `require()` paths - update videoMap in HomeScreen.js when adding new videos
+- **BPM Range:** Currently fixed at 70-80 BPM (can be expanded later)
+- **Performance:** Videos should be optimized for mobile playback (H.264 codec recommended)
+- **Landscape Mode:** All layouts optimized for landscape orientation for golf stance
+- **Safe Areas:** UI respects device safe areas (notches, home indicators)
