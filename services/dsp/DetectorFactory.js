@@ -16,6 +16,9 @@ export class DetectorFactory {
     console.log(`DetectorFactory: Creating ${detectorType} detector`);
     
     switch (detectorType) {
+      case 'acoustic':
+        return this.createAcousticDetector(options);
+
       case 'expo':
         return this.createExpoDetector(options);
 
@@ -44,7 +47,7 @@ export class DetectorFactory {
     try {
       const { ExpoPlayAudioStream } = require('@cjblack/expo-audio-stream');
       if (ExpoPlayAudioStream && typeof ExpoPlayAudioStream.startRecording === 'function') {
-        return 'expo';
+        return 'acoustic'; // Use acoustic detector with expo-audio-stream
       }
     } catch (e) {
       console.log('ExpoPlayAudioStream not available (expected in Expo Go)');
@@ -62,7 +65,15 @@ export class DetectorFactory {
   }
 
   /**
-   * Create an Expo audio stream based detector
+   * Create professional acoustic detector with multi-band analysis
+   */
+  static createAcousticDetector(options) {
+    const { PutterDetectorAcoustic } = require('./PutterDetectorAcoustic');
+    return new PutterDetectorAcoustic(options);
+  }
+
+  /**
+   * Create an Expo audio stream based detector (legacy)
    */
   static createExpoDetector(options) {
     const { PutterDetectorExpo } = require('./PutterDetectorExpo');
@@ -98,6 +109,7 @@ export class DetectorFactory {
    */
   static async getCapabilities() {
     const capabilities = {
+      acoustic: false,
       expo: false,
       simple: true,
       debug: __DEV__,
@@ -105,10 +117,12 @@ export class DetectorFactory {
       isDevelopment: __DEV__,
     };
 
-    // Check Expo capability
+    // Check Expo/Acoustic capability
     try {
       const { ExpoPlayAudioStream } = require('@cjblack/expo-audio-stream');
-      capabilities.expo = !!ExpoPlayAudioStream;
+      const available = !!ExpoPlayAudioStream;
+      capabilities.expo = available;
+      capabilities.acoustic = available; // Acoustic detector uses expo-audio-stream
     } catch (e) {
       // Not available
     }

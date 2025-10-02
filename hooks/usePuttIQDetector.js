@@ -1,24 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
+import { Audio } from 'expo-av';
 import { Metronome } from '../services/audio/Metronome';
 import { DetectorFactory } from '../services/dsp/DetectorFactory';
 
-// Conditionally import native modules for Expo Go compatibility
-let request, PERMISSIONS, RESULTS;
+// Conditionally import AEC modules for Expo Go compatibility
 let enableAEC, disableAEC, isAECSupported;
-
-try {
-  const permissions = require('react-native-permissions');
-  request = permissions.request;
-  PERMISSIONS = permissions.PERMISSIONS;
-  RESULTS = permissions.RESULTS;
-} catch (e) {
-  console.log('react-native-permissions not available, using fallback');
-  // Fallback for Expo Go
-  request = async () => 'granted';
-  PERMISSIONS = { IOS: { MICROPHONE: null }, ANDROID: { RECORD_AUDIO: null } };
-  RESULTS = { GRANTED: 'granted', UNAVAILABLE: 'unavailable' };
-}
 
 try {
   const aec = require('../services/audio/enableAEC');
@@ -106,7 +93,7 @@ export function usePuttIQDetector(defaultBpm = 30) {
         // Initialize detector using factory
         try {
           const detectorOptions = {
-            sampleRate: 16000,
+            sampleRate: 44100,  // 44.1kHz for professional acoustic analysis
             frameLength: 256,
             refractoryMs: 100,     // Very fast response for putts
             energyThresh: 3,       // Reduced sensitivity by 30% for fewer false positives
@@ -128,6 +115,10 @@ export function usePuttIQDetector(defaultBpm = 30) {
             getBpm: () => {
               return metronomeRef.current ? metronomeRef.current.getBpm() : 40;
             },
+            getBeatCount: () => {
+              return metronomeRef.current ? metronomeRef.current.getBeatCount() : 0;
+            },
+            minBeatCount: 2,  // Only start detecting after 2nd metronome beat
             onStrike: (strikeEvent) => {
               console.log('⚡ Strike detected in hook:', {
                 energy: strikeEvent.energy.toFixed(6),
@@ -217,34 +208,46 @@ export function usePuttIQDetector(defaultBpm = 30) {
   }, [bpm]);
 
   /**
-   * Request microphone permission
+   * Request microphone permission using expo-av
    * @returns {Promise<boolean>} True if granted
    */
   const requestMicrophonePermission = async () => {
     try {
-      // Skip permission request on web or unsupported platforms
+      // Skip permission request on web
       if (Platform.OS === 'web') {
         console.log('Web platform detected, skipping native permission request');
-        return true; // Assume granted for web
+        return true;
       }
 
-      const permission = Platform.select({
-        ios: PERMISSIONS.IOS.MICROPHONE,
-        android: PERMISSIONS.ANDROID.RECORD_AUDIO,
-      });
+      console.log('Requesting microphone permission...');
+      const { status, canAskAgain, granted } = await Audio.requestPermissionsAsync();
 
-      if (!permission) {
-        console.warn('Permission not defined for platform:', Platform.OS);
-        return false;
+      console.log('Microphone permission result:', { status, granted });
+
+      if (granted || status === 'granted') {
+        return true;
       }
 
-      const result = await request(permission);
-      console.log('Microphone permission result:', result);
-      return result === 'granted' || result === RESULTS.GRANTED || result === RESULTS.UNAVAILABLE; // UNAVAILABLE means not needed on this platform
+      // Permission denied - show helpful message
+      if (!canAskAgain) {
+        Alert.alert(
+          'Microphone Access Required',
+          'Please enable microphone access in Settings to use Listen Mode.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Permission Denied',
+          'Microphone access is needed to detect your putting strokes.',
+          [{ text: 'OK' }]
+        );
+      }
+
+      return false;
     } catch (error) {
       console.error('Failed to request microphone permission:', error);
-      // Try to continue anyway in case it's a permission library issue
-      return true;
+      Alert.alert('Error', 'Could not request microphone permission. Please try again.');
+      return false;
     }
   };
 
