@@ -32,6 +32,7 @@ export default function HomeScreen({ user }) {
   const [listenMode, setListenMode] = useState(false);
   const [hitPosition, setHitPosition] = useState(null); // Position of detected hit (0-1)
   const [hitFeedback, setHitFeedback] = useState(null); // Colored feedback bar data
+  const [liveAudioLevel, setLiveAudioLevel] = useState(null); // Live audio level display
 
   // Video loading state
   const [videoLoading, setVideoLoading] = useState(true); // True when video is loading
@@ -326,8 +327,20 @@ export default function HomeScreen({ user }) {
   const detector = useVideoSyncDetector({
     bpm,
     videoPlayer: player,
-    debugMode: true, // Temporarily enabled for diagnosis
+    debugMode: true, // Set to true for debug logging
+    onAudioLevel: (audioData) => {
+      // Update live audio display every frame
+      setLiveAudioLevel(audioData);
+    },
     onHitDetected: (hitEvent) => {
+      console.log('🎯 Hit detected!', {
+        position: (hitEvent.position * 100).toFixed(1) + '%',
+        accuracy: (hitEvent.accuracy * 100).toFixed(0) + '%',
+        errorMs: hitEvent.errorMs.toFixed(0) + 'ms',
+        timing: hitEvent.isEarly ? 'Early' : hitEvent.isLate ? 'Late' : 'Perfect',
+        distanceFromCenter: ((hitEvent.distanceFromCenter || 0) * 100).toFixed(1) + '%'
+      });
+
       // Calculate color based on error in milliseconds
       const colorData = getHitColor(hitEvent.accuracy, hitEvent.errorMs, hitEvent.position);
 
@@ -343,10 +356,6 @@ export default function HomeScreen({ user }) {
 
       // Bar will remain visible until video ends, then cleared automatically
       // (No timeout needed - cleared in video end listener)
-    },
-    onAudioLevel: (audioData) => {
-      // No-op callback - detector expects this even if we don't use it
-      // This ensures the detector's audio processing loop works correctly
     }
   });
 

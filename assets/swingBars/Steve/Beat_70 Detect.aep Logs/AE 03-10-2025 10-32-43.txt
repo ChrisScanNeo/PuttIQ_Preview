@@ -1,17 +1,0 @@
-Adobe After Effects v25.5 Windows 64 render log for project “Beat_70 Detect.aep”
-
-Rendering started on 03/10/2025 at 10:32:43
-
-  03/10/2025 10:32:43: Starting composition “PutterMetronome_70BPM”.
-
-  Output To: C:\PuttIQ\assets\swingBars\ios\beats\Beats_72BPM.mov    03/10/2025 10:32:44: Finished composition “PutterMetronome_70BPM”.
-
-
-  03/10/2025 10:32:44: Starting composition “PutterMetronome_70BPM”.
-
-  Output To: C:\PuttIQ\assets\swingBars\ios\beats\Beats_73BPM.mov    03/10/2025 10:32:45: Finished composition “PutterMetronome_70BPM”.
-
-
-  Total Time Elapsed: 2 Seconds
-Log closed on 03/10/2025 at 10:32:45
-
