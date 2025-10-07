@@ -91,13 +91,11 @@ export class VideoSyncDetectorV2 {
     // Calculate video duration
     const videoDuration = beatDurationMs * this.opts.beatsInVideo;  // e.g., 3,428ms at 70 BPM
 
-    // Calculate proportional listen delay to avoid detecting Beat 3 tone
-    // At 70 BPM: 500ms = 58.3% of beat duration (857ms)
-    // For other BPMs: scale proportionally to maintain same relative position
-    const listenDelayPercent = 0.583;  // 58.3% of one beat
-    const listenDelayMs = beatDurationMs * listenDelayPercent;  // e.g., 500ms at 70 BPM, 437ms at 80 BPM
-    const listenDelayAsVideoPercent = listenDelayMs / videoDuration;  // e.g., 0.146 (14.6%) at all BPMs
-    const listenStartPercent = beat3Position + listenDelayAsVideoPercent;  // e.g., 0.646 (64.6%) at all BPMs
+    // Fixed delay after Beat 3 to avoid detecting the tone
+    // Uses fixed 500ms because audio tone duration doesn't scale with BPM
+    const listenDelayMs = this.opts.listenDelayMs || 500;  // Fixed 500ms
+    const listenDelayAsVideoPercent = listenDelayMs / videoDuration;
+    const listenStartPercent = beat3Position + listenDelayAsVideoPercent;
 
     return {
       beatDurationMs,
