@@ -4,7 +4,7 @@ export default {
     slug: "PuttIQ2",
     version: "1.0.0",
     orientation: "landscape",
-    icon: "./assets/Icon_nobackground.jpg",
+    icon: "./assets/icons/iTunesArtwork@2x.png",
     userInterfaceStyle: "light",
     splash: {
       image: "./assets/Logo_NoBackground.jpg",
