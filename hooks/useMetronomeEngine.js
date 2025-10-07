@@ -32,7 +32,7 @@ export function useMetronomeEngine(bpm, running) {
         });
 
         // Load the metronome sound using expo-audio
-        const sound = createAudioPlayer(require('../assets/sound/metronome-85688.mp3'));
+        const sound = createAudioPlayer(require('../assets/sounds/Metronome/ToneClick.mp3'));
         sound.volume = 0.7;
 
         if (!alive) {

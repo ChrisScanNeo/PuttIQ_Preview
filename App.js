@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { View, Image, Text, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { Asset } from 'expo-asset';
+import { Audio } from 'expo-av';
 // Using MinimalNavigator for simplified UI
 import MinimalNavigator from './MinimalNavigator';
 // import SimpleNavigator from './navigation/SimpleNavigator';
@@ -15,35 +17,78 @@ export default function App() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Lock orientation to landscape
-    const lockOrientation = async () => {
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-    };
-    
-    lockOrientation();
-    
-    // Automatically authenticate user based on device ID
-    const initializeUser = async () => {
+    const initializeApp = async () => {
+      const startTime = Date.now();
+
       try {
-        const userData = await authenticateUser();
-        setUser(userData);
+        // Lock orientation to landscape
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+
+        // Load critical assets and authenticate user in parallel
+        await Promise.all([
+          // Authenticate user
+          authenticateUser().then(userData => {
+            setUser(userData);
+          }),
+
+          // Preload critical assets
+          Asset.loadAsync([
+            require('./assets/grass-background.jpeg'),
+            require('./assets/ball/MainBall.png'),
+            require('./assets/Logo_NoBackground.jpg'),
+            require('./assets/swingBars/ios/tones/Tones_70BPM.mov'),
+            require('./assets/swingBars/ios/beats/Beats_70BPM.mov'),
+            require('./assets/swingBars/ios/wind/Wind_70BPM.mov'),
+            require('./assets/swingBars/ios/detect/Tones_Detect_70BPM.mov'), // Silent detect video
+            require('./assets/icons/minus.png'),
+            require('./assets/icons/plus.png'),
+            require('./assets/icons/musical-note.png'),
+            require('./assets/icons/metronome.png'),
+            require('./assets/icons/wind.png'),
+            require('./assets/icons/lightening.png'), // Listen mode button
+          ]),
+        ]);
+
+        // Request microphone permission (non-blocking for Listen Mode)
+        try {
+          const { granted } = await Audio.requestPermissionsAsync();
+          if (granted) {
+            console.log('Microphone permission granted');
+          } else {
+            console.log('Microphone permission denied - Listen Mode will request again when activated');
+          }
+        } catch (permErr) {
+          console.warn('Could not request microphone permission:', permErr);
+          // Non-critical - user can still use app without Listen Mode
+        }
+
+        // Ensure minimum 2.5 seconds loading time
+        const elapsedTime = Date.now() - startTime;
+        const remainingTime = Math.max(0, 2500 - elapsedTime);
+
+        if (remainingTime > 0) {
+          await new Promise(resolve => setTimeout(resolve, remainingTime));
+        }
+
       } catch (err) {
-        console.error('Authentication error:', err);
+        console.error('Initialization error:', err);
         setError('Failed to initialize app. Please check your connection.');
       } finally {
         setLoading(false);
       }
     };
 
-    initializeUser();
+    initializeApp();
   }, []);
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.appTitle}>PuttIQ</Text>
-        <ActivityIndicator size="large" color="#2E7D32" />
-        <Text style={styles.loadingText}>Initializing...</Text>
+        <Image
+          source={require('./assets/Logo_NoBackground.jpg')}
+          style={styles.loadingLogo}
+          resizeMode="contain"
+        />
       </View>
     );
   }
@@ -69,26 +114,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#000',
   },
-  appTitle: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#2E7D32',
-    marginBottom: 20,
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#666',
+  loadingLogo: {
+    width: '80%',
+    height: 200,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    backgroundColor: '#000',
   },
   errorText: {
-    color: 'red',
+    color: '#fff',
     textAlign: 'center',
   },
 });

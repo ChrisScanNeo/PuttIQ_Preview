@@ -15,6 +15,20 @@
 import { BiquadFilter, FilterChain } from './BiquadFilter';
 import { MultiBandThreshold } from './AdaptiveThreshold';
 
+// Import ExpoPlayAudioStream for microphone access
+let ExpoPlayAudioStream = null;
+
+try {
+  const audioStreamModule = require('@cjblack/expo-audio-stream');
+  ExpoPlayAudioStream = audioStreamModule.ExpoPlayAudioStream;
+
+  if (!ExpoPlayAudioStream) {
+    console.warn('ExpoPlayAudioStream not found, acoustic detector requires native build');
+  }
+} catch (e) {
+  console.error('Failed to load expo-audio-stream:', e);
+}
+
 export class PutterDetectorAcoustic {
   constructor(options = {}) {
     // Configuration
@@ -79,6 +93,9 @@ export class PutterDetectorAcoustic {
     // Performance tracking
     this.frameCount = 0;
     this.processingTimeTotal = 0;
+
+    // Audio stream subscription
+    this.subscription = null;
   }
 
   /**
@@ -210,6 +227,13 @@ export class PutterDetectorAcoustic {
     // Update frame count and timing
     this.frameCount++;
     this.processingTimeTotal += performance.now() - startTime;
+
+    // Periodic stats logging (every 2 seconds)
+    if (this.opts.debugMode && (!this.lastStatsTime || now - this.lastStatsTime > 2000)) {
+      const uptime = ((now - (this.lastStatsTime || now)) / 1000).toFixed(1);
+      console.log(`📊 [${uptime}s] Frames: ${this.frameCount}, High: ${this.highBandEnvelope.toFixed(6)}, Low: ${this.lowBandEnvelope.toFixed(6)}, Thresh: ${this.threshold.highBand.getThreshold().toFixed(6)}/${this.threshold.lowBand.getThreshold().toFixed(6)}`);
+      this.lastStatsTime = now;
+    }
   }
 
   /**
@@ -221,17 +245,13 @@ export class PutterDetectorAcoustic {
     // Check debounce (minimum time since last strike)
     const timeSinceLastStrike = now - this.lastStrikeAt;
     if (timeSinceLastStrike < this.opts.debounceMs) {
-      if (this.opts.debugMode) {
-        console.log(`⏭️ Event REJECTED - Debounce (${timeSinceLastStrike.toFixed(0)}ms < ${this.opts.debounceMs}ms)`);
-      }
+      console.log(`⏭️ Event REJECTED - Debounce (${timeSinceLastStrike.toFixed(0)}ms < ${this.opts.debounceMs}ms)`);
       return;
     }
 
     // Check duration (reject long events like voice/wind)
     if (duration > this.opts.maxDurationMs) {
-      if (this.opts.debugMode) {
-        console.log(`⏭️ Event REJECTED - Too long (${duration.toFixed(0)}ms > ${this.opts.maxDurationMs}ms)`);
-      }
+      console.log(`⏭️ Event REJECTED - Too long (${duration.toFixed(0)}ms > ${this.opts.maxDurationMs}ms)`);
       return;
     }
 
@@ -240,18 +260,14 @@ export class PutterDetectorAcoustic {
       const lowBandPresent = this.threshold.lowBand.isAboveThreshold(this.eventPeakLow);
 
       if (!lowBandPresent) {
-        if (this.opts.debugMode) {
-          console.log(`⏭️ Event REJECTED - No low-band corroboration`);
-        }
+        console.log(`⏭️ Event REJECTED - No low-band corroboration`);
         return;
       }
     }
 
     // Check metronome tick guard (ignore events near metronome ticks)
     if (this.isNearMetronomeTick(now)) {
-      if (this.opts.debugMode) {
-        console.log(`⏭️ Event REJECTED - Near metronome tick`);
-      }
+      console.log(`⏭️ Event REJECTED - Near metronome tick`);
       return;
     }
 
@@ -300,6 +316,79 @@ export class PutterDetectorAcoustic {
     // Combined quality
     return (durationScore * 0.6 + ratioScore * 0.4);
   }
+  /**
+   * Convert base64 string to Int16Array
+   * @param {string} base64 - Base64 encoded audio data
+   * @returns {Int16Array} Audio samples
+   */
+  base64ToInt16Array(base64) {
+    // Decode base64 to binary string
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Convert to Int16Array (assuming little-endian)
+    const int16Array = new Int16Array(bytes.buffer);
+    return int16Array;
+  }
+
+
+  /**
+   * Handle incoming audio data from microphone stream
+   * @param {Object} audioData - Audio data from ExpoPlayAudioStream
+   */
+  handleAudioData(audioData) {
+    if (!this.isRunning) return;
+
+    // Log audio data structure on first call
+    if (!this.audioDataLogged) {
+      console.log('🔍 Audio data structure:', {
+        hasData: !!audioData.data,
+        dataType: typeof audioData.data,
+        dataLength: audioData.data?.length,
+        isString: typeof audioData.data === 'string',
+        firstChars: typeof audioData.data === 'string' ? audioData.data.substring(0, 20) : 'N/A'
+      });
+      this.audioDataLogged = true;
+    }
+
+    // Decode base64 audio data to Int16Array
+    const base64Audio = audioData.data;
+    if (!base64Audio || typeof base64Audio !== 'string') {
+      console.warn('⚠️ Invalid audio data received:', typeof base64Audio);
+      return;
+    }
+
+    const int16Samples = this.base64ToInt16Array(base64Audio);
+
+    // Convert Int16Array to Float32Array and normalize to [-1.0, 1.0]
+    const samples = new Float32Array(int16Samples.length);
+    let peak = 0;
+    for (let i = 0; i < int16Samples.length; i++) {
+      samples[i] = int16Samples[i] / 32768.0;
+      peak = Math.max(peak, Math.abs(samples[i]));
+    }
+
+    // Log audio stream reception (first time and periodically)
+    if (this.opts.debugMode && (!this.lastAudioLogTime || performance.now() - this.lastAudioLogTime > 5000)) {
+      console.log(`📊 Audio stream: ${int16Samples.length} samples, peak: ${peak.toFixed(3)}, first 3 samples: [${samples[0].toFixed(4)}, ${samples[1].toFixed(4)}, ${samples[2].toFixed(4)}]`);
+      this.lastAudioLogTime = performance.now();
+    }
+
+    // Process audio in chunks of frameLength
+    const frameLength = this.opts.frameLength;
+    const numFrames = Math.floor(samples.length / frameLength);
+
+    for (let i = 0; i < numFrames; i++) {
+      const offset = i * frameLength;
+      const frame = samples.slice(offset, offset + frameLength);
+      this.processFrame(frame);
+    }
+  }
 
   /**
    * Check if timestamp is near a metronome tick
@@ -324,13 +413,48 @@ export class PutterDetectorAcoustic {
    * Start the detector
    */
   async start() {
+    if (!ExpoPlayAudioStream) {
+      console.error('ExpoPlayAudioStream not available - requires custom native build');
+      throw new Error('Acoustic detector requires expo-audio-stream module');
+    }
+
     this.isRunning = true;
     this.frameCount = 0;
     this.processingTimeTotal = 0;
     this.lastStrikeAt = 0;
+    this.lastStatsTime = 0;
     this.threshold.reset();
 
-    console.log('🎯 Acoustic putter detector started');
+    console.log('🎯 Acoustic detector starting...', {
+      sampleRate: this.opts.sampleRate + 'Hz',
+      frameLength: this.opts.frameLength,
+      debugMode: this.opts.debugMode ? 'ON' : 'OFF',
+      energyThresh: this.opts.energyThresh,
+      audioGain: this.opts.audioGain
+    });
+
+    try {
+      // Configure audio stream
+      const recordingConfig = {
+        sampleRate: this.opts.sampleRate,
+        channels: 1,
+        bitsPerChannel: 16,
+        interval: 100, // Callback every 100ms
+        onAudioStream: (audioData) => {
+          this.handleAudioData(audioData);
+        }
+      };
+
+      // Start recording
+      const result = await ExpoPlayAudioStream.startRecording(recordingConfig);
+      this.subscription = result.subscription;
+
+      console.log('✅ Acoustic detector started and listening for audio');
+    } catch (error) {
+      console.error('Failed to start acoustic detector:', error);
+      this.isRunning = false;
+      throw error;
+    }
   }
 
   /**
@@ -338,6 +462,17 @@ export class PutterDetectorAcoustic {
    */
   async stop() {
     this.isRunning = false;
+
+    // Stop audio stream if running
+    if (this.subscription) {
+      try {
+        await ExpoPlayAudioStream.stopRecording();
+        this.subscription = null;
+      } catch (error) {
+        console.error('Error stopping audio stream:', error);
+      }
+    }
+
     console.log('⏸️ Acoustic putter detector stopped');
   }
 

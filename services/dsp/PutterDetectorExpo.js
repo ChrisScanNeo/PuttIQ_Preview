@@ -70,6 +70,8 @@ export class PutterDetectorExpo {
       tickGuardMs: 50,  // Increased from 30ms for better tick filtering
       getUpcomingTicks: () => [],
       getBpm: () => 30,  // Default BPM function
+      getBeatCount: () => 0,  // Get current beat count from metronome
+      minBeatCount: 0,  // Minimum beat count before detection starts (0 = detect immediately)
       onStrike: () => {},
       useProfiles: true, // Enable profile-based detection by default
       useListeningZone: false, // Disabled by default for backwards compatibility
@@ -418,6 +420,15 @@ export class PutterDetectorExpo {
       const timeSinceLastHit = now - this.lastHitAt;
       if (timeSinceLastHit < this.opts.refractoryMs) {
         return; // Too soon after last hit
+      }
+
+      // Check minimum beat count (for listen mode - only detect after Nth beat)
+      if (this.opts.minBeatCount > 0) {
+        const currentBeat = this.opts.getBeatCount();
+        if (currentBeat < this.opts.minBeatCount) {
+          console.log(`⏳ Beat ${currentBeat}/${this.opts.minBeatCount} - waiting to start detection`);
+          return; // Haven't reached minimum beat count yet
+        }
       }
 
       // Check metronome tick guard

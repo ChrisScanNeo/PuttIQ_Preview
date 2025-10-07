@@ -43,7 +43,7 @@ export class PreciseMetronome {
       });
 
       // Load single audio player
-      this.audioPlayer = createAudioPlayer(require('../../assets/sound/metronome-85688.mp3'));
+      this.audioPlayer = createAudioPlayer(require('../../assets/sounds/Metronome/ToneClick.mp3'));
       this.audioPlayer.volume = 0.7;
 
       this.isLoaded = true;

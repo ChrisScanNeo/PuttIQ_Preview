@@ -13,6 +13,7 @@ export class Metronome {
     this.nextTickAt = 0; // performance.now() based timing
     this.timer = null;
     this.isLoaded = false;
+    this.currentBeat = 0; // Track beat count for detection timing
   }
 
   /**
@@ -30,7 +31,7 @@ export class Metronome {
       });
 
       // Load the local metronome sound using the new API
-      this.sound = createAudioPlayer(require('../../assets/sound/metronome-85688.mp3'));
+      this.sound = createAudioPlayer(require('../../assets/sounds/Metronome/ToneClick.mp3'));
       this.sound.volume = 0.7;
 
       this.isLoaded = true;
@@ -72,10 +73,11 @@ export class Metronome {
     }
 
     this.isRunning = true;
+    this.currentBeat = 0; // Reset beat counter on start
     const period = 60000 / this.bpm; // milliseconds between beats
 
     // Start first tick after a short delay
-    this.nextTickAt = Date.now() + 200;
+    this.nextTickAt = performance.now() + 200;
 
     // Main timing loop using setInterval for better consistency
     const loop = () => {
@@ -87,7 +89,7 @@ export class Metronome {
         return;
       }
 
-      const now = Date.now();
+      const now = performance.now();
 
       // Check if it's time for the next tick
       if (now >= this.nextTickAt) {
@@ -95,6 +97,9 @@ export class Metronome {
           // Play the tick sound - reset to start and play
           this.sound.seekTo(0);
           this.sound.play();
+
+          // Increment beat counter
+          this.currentBeat++;
         } catch (error) {
           console.warn('Failed to play tick:', error);
         }
@@ -206,6 +211,15 @@ export class Metronome {
    */
   getIsRunning() {
     return this.isRunning;
+  }
+
+  /**
+   * Get the current beat count
+   * Returns 0 if metronome not running
+   * @returns {number}
+   */
+  getBeatCount() {
+    return this.currentBeat;
   }
 }
 

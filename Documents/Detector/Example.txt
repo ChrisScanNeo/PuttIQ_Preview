@@ -1,0 +1,19 @@
+L at our command centre app - /home/j503/ScanNeo-edge/dashboard
+
+We have two buttons that start our ANPR Pipeline V7 (Docs  - Documentation/ANPR Pipeline)and our Signage detection pipeline (Documentation/Signage).
+
+Firstly we have having Venv issues with how the API server works, I also want to dynamically start the pipeline depending on our camera configuration in /home/j503/ScanNeo-edge/config/scanneo.config.json
+
+Rules are
+
+If 2 cameras are on the same side (Front Right/Back right for example) and configured for ANPR, they start in a single pipeline stitched tgether.
+
+If one camera is configured on the side for ANPR we only start the one in a single pipline
+
+If a camera is confiogured for Object Detection, it starts the signage pipeline in a single pipline.
+
+2 use cases: 
+
+all 4 cameras are set to ANPR in /home/j503/ScanNeo-edge/config/scanneo.config.json, so we have two piplines with Front and back stiched in together for left and right
+
+2 cameras are configured for ANPR and 2 for Object detection in /home/j503/ScanNeo-edge/config/scanneo.config.json so we create four single cameras pipelines, 2 single pipelines for ANPR and 2 for Object detection.

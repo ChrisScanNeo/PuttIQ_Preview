@@ -1,24 +1,28 @@
 # PuttIQ2 - Putting Rhythm Trainer Development Guide
 
 ## 🚀 Current Progress Summary
-**Last Updated:** September 30, 2025
+**Last Updated:** October 1, 2025
 
 ### ✅ Completed Features:
-- **Project Setup** - Expo SDK 53 with React Native configured for Codespaces
+- **Project Setup** - Expo SDK 54 with React Native 0.81.4 configured for Codespaces
 - **Device Authentication** - Automatic login using device IDs (iOS vendor ID, Android ID) - NO Google Sign-In
 - **Firebase Integration** - Firestore database with offline support and real configuration values
 - **Landscape Orientation** - App locked to landscape mode for golf stance
 - **Offline Support** - AsyncStorage cached user data with Firebase fallback
 - **EAS Build Configuration** - Custom dev client builds for iOS/Android
-- **iOS Audio Session** - Custom plugin for AVAudioSessionCategoryPlayAndRecord with speaker output
-- **Video-Based Timing System** - MP4 video bars for visual timing feedback (70-80 BPM)
-- **BPM Control** - BPM slider with +/- buttons (70-80 BPM range)
+- **Platform-Specific Video System** - .mov for iOS, .webm for Android (optimized per platform)
+- **Video-Based Timing System** - Transparent timing bar with 2-second gap between loops
+- **2-Second Gap Feature** - Professional pause between video cycles (client requirement)
+- **BPM Locked at 70** - Testing mode with locked BPM (controls disabled)
 - **Sound Type Selection** - Three sound types: Tone, Beat, Wind with custom icons
-- **Interactive Golf Ball** - Clickable golf ball with "CLICK TO START/STOP" text overlay
-- **Dynamic Video Loading** - Automatically loads correct video based on BPM and sound type
-- **Control Locking** - BPM and sound type controls disabled during playback
+- **Interactive Golf Ball** - Clickable golf ball with "START/STOP" text overlay
+- **Dynamic Video Loading** - Automatically loads correct video based on platform and sound type
+- **Stop-on-Click Controls** - Clicking any control during playback stops video immediately
 - **Custom Icon System** - PNG icons for all UI controls (plus, minus, musical-note, metronome, wind)
-- **Responsive Golf Ball** - SVG/PNG golf ball that scales to 90% of available screen space
+- **Responsive Golf Ball** - PNG golf ball that scales dynamically to available screen space (80% of height)
+- **Professional Loading Screen** - Black screen with PuttIQ logo, 2.5s minimum load time with asset preloading
+- **Custom App Icon & Splash** - Branded icon and splash screen (Icon_nobackground.jpg, Logo_NoBackground.jpg)
+- **Grass Background** - Full-screen cover mode background image
 
 ### 🔧 In Progress:
 - **Complete Video Library** - Adding remaining BPM variations (71-80) for all sound types
@@ -31,10 +35,11 @@
 - **Practice Statistics** - No session tracking or progress display
 
 ### ⚠️ Current Video Library Status:
-- ✅ **Tone_70BPM.mp4** - Available
-- ✅ **Beat_70BPM.mp4** - Available
-- ✅ **Wind_70BPM.mp4** - Available
-- ⏳ **71-80 BPM variations** - Need to be uploaded for all three types (30 files total)
+- ✅ **iOS (Tones_70BPM.mov)** - Available (QuickTime format with alpha transparency)
+- ✅ **iOS (Beats_70BPM.mov)** - Placeholder (copy of Tones)
+- ✅ **iOS (Wind_70BPM.mov)** - Placeholder (copy of Tones)
+- ⏳ **Android .webm files** - Empty placeholders created, need actual video files
+- ⏳ **71-80 BPM variations** - Need to be created for all three types (30 .mov + 30 .webm = 60 files total)
 
 ### 📅 Priority Next Steps:
 1. Upload remaining video files (71-80 BPM for Tone, Beat, Wind)
@@ -55,14 +60,18 @@
 - **Platforms:** iOS and Android
 
 ### Video & Audio Configuration
-- **Video System:** MP4 video files with embedded audio for timing bars
-- **Video Location:** `/assets/swingBars/{soundType}/{SoundType}_{BPM}BPM.mp4`
-  - Tone videos: `/assets/swingBars/tones/Tones_70BPM.mp4` (etc.)
-  - Beat videos: `/assets/swingBars/beats/Beats_70BPM.mp4` (etc.)
-  - Wind videos: `/assets/swingBars/wind/Wind_70BPM.mp4` (etc.)
-- **Video Player:** expo-video with looping enabled
-- **BPM Range:** 70-80 BPM
-- **Dynamic Loading:** Videos load based on selected sound type + BPM combination
+- **Video System:** Platform-specific video files with embedded audio for timing bars
+- **iOS Video Format:** .mov (QuickTime with H.264/ProRes 4444 + alpha transparency)
+- **Android Video Format:** .webm (VP8/VP9 codec)
+- **Video Location:**
+  - iOS: `/assets/swingBars/ios/{soundType}/{SoundType}_{BPM}BPM.mov`
+  - Android: `/assets/swingBars/android/{soundType}/{SoundType}_{BPM}BPM.webm`
+- **Video Player:** expo-video with manual looping (2-second gap between cycles)
+- **Looping Behavior:** Video plays once, pauses 2 seconds, then restarts from frame 0
+- **BPM Range:** Currently locked at 70 BPM for testing (71-80 to be added)
+- **Platform Detection:** Automatically selects correct video format based on `Platform.OS`
+- **Video Container:** 40px height, white border, transparent background, 12px border radius
+- **Dynamic Loading:** Videos load based on platform, sound type, and BPM
 
 ### Firebase Setup
 - **Authentication:** Device-based (automatic)
@@ -71,13 +80,15 @@
 - **User Data:** Stored by device ID
 
 ### Development Environment
-- **Platform:** GitHub Codespaces
-- **Testing:** Custom Dev Client via EAS Build (Expo Go for basic features only)
+- **Platform:** GitHub Codespaces / Windows
+- **Testing:** Custom Dev Client via EAS Build (Expo Go CANNOT display custom icons/splash)
 - **Port:** 8081
-- **Framework:** React Native with Expo SDK 53
-- **Node Version:** Compatible with React 19.0.0
-- **Build System:** EAS Build with custom dev client
-- **Config:** app.config.js (no app.json)
+- **Framework:** React Native 0.81.4 with Expo SDK 54
+- **React Version:** 19.1.0
+- **Node Version:** Compatible with React 19.x
+- **Build System:** EAS Build with expo-dev-client
+- **Config:** app.config.js (JavaScript config, not JSON)
+- **Asset Preloading:** expo-asset for loading screen optimization
 
 ---
 

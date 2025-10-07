@@ -5,7 +5,8 @@
       "Bash(npx kill-port:*)",
       "Bash(npm install:*)",
       "WebFetch(domain:docs.expo.dev)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npx patch-package:*)"
     ],
     "deny": [],
     "ask": []

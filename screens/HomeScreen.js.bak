@@ -1,0 +1,565 @@
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, ImageBackground, Image, Dimensions, Platform } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import { usePuttIQDetector } from '../hooks/usePuttIQDetector';
+
+const { height: screenHeight } = Dimensions.get('window');
+
+// Dynamic sizing calculations
+const CONTROL_BARS_BOTTOM = 10; // Distance from screen bottom to control bars container
+const ICON_BAR_HEIGHT = 38.4; // Icon bar height (20% smaller)
+const BAR_GAP = 6; // Gap between BPM and icon bars
+const BPM_BAR_HEIGHT = 38.4; // BPM bar height (20% smaller)
+const VIDEO_MARGIN_TOP = 10;
+const VIDEO_HEIGHT = 46.5; // Video bar height (50% taller)
+const VIDEO_BORDER = 0; // No border for transparent videos
+const BALL_TOP_GAP = 0; // Gap between video bar and ball (ball image has built-in padding)
+const BALL_BOTTOM_GAP = 35; // Gap between ball and BPM bar top
+
+
+
+export default function HomeScreen({ user }) {
+  const [soundType, setSoundType] = useState('tone'); // 'tone', 'beat', 'wind'
+  // TESTING: Lock BPM at 70 until all videos are ready
+  const [bpm] = useState(70);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [videoKey, setVideoKey] = useState('tone-70'); // Track video key for re-rendering
+  const [restartTimeout, setRestartTimeout] = useState(null); // Track restart timer
+
+  // Listen mode state
+  const [listenMode, setListenMode] = useState(false);
+  const [hitPosition, setHitPosition] = useState(null); // Position of detected hit (0-1)
+
+  // Initialize detector - will work in fallback mode if real detector unavailable
+  const detector = usePuttIQDetector(70); // 70 BPM locked for testing
+
+  // TESTING: Simplified video maps - only 70 BPM for now
+  // TODO: Add full 70-80 BPM range when all videos are ready
+  const videoMapIOS = {
+    'tone-70': require('../assets/swingBars/ios/tones/Tones_70BPM.mov'),
+    'beat-70': require('../assets/swingBars/ios/beats/Beats_70BPM.mov'),
+    'wind-70': require('../assets/swingBars/ios/wind/Wind_70BPM.mov'),
+    // Silent versions for listen mode (using Tones_Detect_70BPM.mov for all types)
+    'tone-70_Silent': require('../assets/swingBars/ios/detect/Tones_Detect_70BPM.mov'),
+    'beat-70_Silent': require('../assets/swingBars/ios/detect/Tones_Detect_70BPM.mov'),
+    'wind-70_Silent': require('../assets/swingBars/ios/detect/Tones_Detect_70BPM.mov'),
+  };
+
+  const videoMapAndroid = {
+    'tone-70': require('../assets/swingBars/android/tones/Tones_70BPM.webm'),
+    'beat-70': require('../assets/swingBars/android/beats/Beats_70BPM.webm'),
+    'wind-70': require('../assets/swingBars/android/wind/Wind_70BPM.webm'),
+    // Silent versions (using regular until Android detect video created)
+    'tone-70_Silent': require('../assets/swingBars/android/tones/Tones_70BPM.webm'),
+    'beat-70_Silent': require('../assets/swingBars/android/beats/Beats_70BPM.webm'),
+    'wind-70_Silent': require('../assets/swingBars/android/wind/Wind_70BPM.webm'),
+  };
+
+  // Select the appropriate video map based on platform
+  const videoMap = Platform.OS === 'ios' ? videoMapIOS : videoMapAndroid;
+
+  // Get video source based on sound type and listen mode (BPM locked at 70 for testing)
+  const getVideoSource = (type, bpmValue, listenModeActive) => {
+    const suffix = listenModeActive ? '_Silent' : '';
+    const key = `${type}-70${suffix}`; // Always use 70 BPM for now
+    console.log(`🎬 Loading video: ${key} on ${Platform.OS} (Listen Mode: ${listenModeActive})`);
+    return videoMap[key] || videoMap[`${type}-70`]; // Fallback to regular if silent not found
+  };
+
+  // Get current video source (updates when soundType or listenMode changes)
+  const currentVideoSource = getVideoSource(soundType, bpm, listenMode);
+
+  // Create video player with current source - key forces re-mount when video changes
+  const player = useVideoPlayer(currentVideoSource, player => {
+    player.loop = false; // Manual looping with 2-second gap
+  });
+
+  // Update video key when sound type or listen mode changes (only when stopped)
+  useEffect(() => {
+    if (!isPlaying) {
+      const suffix = listenMode ? '_Silent' : '';
+      const newKey = `${soundType}-70${suffix}`;
+      console.log(`🎥 Video changed to: ${newKey}`);
+      setVideoKey(newKey);
+    }
+  }, [soundType, listenMode, isPlaying]);
+
+  // Handle video end and restart with 2-second gap
+  useEffect(() => {
+    if (!player) return;
+
+    const subscription = player.addListener('playingChange', (event) => {
+      // When video stops playing and we're at the end
+      if (!event.isPlaying && isPlaying && player.currentTime >= player.duration - 0.1) {
+        console.log('🎬 Video ended, waiting 2 seconds before restart...');
+
+        // Wait 2 seconds, then restart from beginning
+        const timeout = setTimeout(() => {
+          if (isPlaying) {
+            console.log('🔄 Restarting video from frame 0');
+            player.replay();
+          }
+        }, 2000);
+
+        setRestartTimeout(timeout);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [player, isPlaying]);
+
+  // Toggle play/pause when ball is clicked
+  const handleBallPress = async () => {
+    console.log(`⚽ Ball clicked! isPlaying: ${isPlaying}, soundType: ${soundType}, bpm: ${bpm}, listenMode: ${listenMode}`);
+    if (isPlaying) {
+      console.log('⏸️ Pausing video');
+      // Clear any pending restart timer
+      if (restartTimeout) {
+        clearTimeout(restartTimeout);
+        setRestartTimeout(null);
+      }
+      player.pause();
+      setIsPlaying(false);
+
+      // Stop detector if listen mode active
+      if (listenMode && detector && detector.isRunning) {
+        console.log('🛑 Stopping detector');
+        await detector.stop();
+      }
+    } else {
+      console.log('▶️ Playing video');
+      player.play();
+      setIsPlaying(true);
+
+      // Start detector if listen mode active
+      if (listenMode && detector && detector.isInitialized && !detector.isRunning) {
+        console.log('🎤 Starting detector');
+        await detector.start();
+      }
+    }
+  };
+
+  // Handle detector strike events - show vertical line on video
+  useEffect(() => {
+    if (!detector || !listenMode || !detector.lastHit) return;
+
+    console.log('🎯 Hit detected!', detector.lastHit);
+
+    // Calculate position in video (0-1)
+    if (player && player.duration) {
+      const position = player.currentTime / player.duration;
+      setHitPosition(position);
+
+      // Clear indicator after 500ms
+      setTimeout(() => setHitPosition(null), 500);
+    }
+  }, [detector?.lastHit, listenMode, player]);
+
+  const insets = useSafeAreaInsets();
+
+  // Calculate the actual position of the BPM bar top edge from screen bottom
+  const bpmBarTopFromBottom = insets.bottom + CONTROL_BARS_BOTTOM + ICON_BAR_HEIGHT + BAR_GAP;
+
+  // Calculate the bottom of the video bar from screen top
+  const videoBarBottom = VIDEO_MARGIN_TOP + VIDEO_HEIGHT + VIDEO_BORDER;
+
+  // Available space for ball: from bottom of video bar to top of BPM bar, minus gaps
+  const availableHeight = screenHeight - videoBarBottom - BALL_TOP_GAP - bpmBarTopFromBottom - BALL_BOTTOM_GAP;
+
+  // Ball size: MainBall.jpg has no padding, use 80% of available height
+  const golfBallSize = Math.min(600, Math.max(150, availableHeight * 0.80));
+
+  // Position ball: bottom offset = distance to BPM bar top + gap
+  const ballBottomOffset = bpmBarTopFromBottom + BALL_BOTTOM_GAP;
+
+  // Debug logging
+  console.log('🏌️ Golf Ball Debug:', {
+    screenHeight,
+    insetsBottom: insets.bottom,
+    videoBarBottom,
+    bpmBarTopFromBottom,
+    availableHeightWithGaps: availableHeight,
+    availableHeightWithoutGaps: screenHeight - videoBarBottom - bpmBarTopFromBottom,
+    gaps: BALL_TOP_GAP + BALL_BOTTOM_GAP,
+    finalBallSize: golfBallSize,
+    ballBottomOffset,
+    spaceUsagePercent: ((golfBallSize / availableHeight) * 100).toFixed(1) + '%',
+  });
+
+
+  return (
+    <ImageBackground
+      source={require('../assets/grass-background.jpeg')}
+      style={styles.backgroundImage}
+      resizeMode="cover"
+    >
+      {/* Tone Bar Video - At top of screen (outside safe area to stick to physical top) */}
+      <View style={styles.videoContainer}>
+        <VideoView
+          key={videoKey}
+          player={player}
+          style={styles.video}
+          contentFit="contain"
+          nativeControls={false}
+        />
+
+        {/* Vertical Line Indicator - Shows when hit detected */}
+        {hitPosition !== null && listenMode && (
+          <View style={[
+            styles.hitIndicator,
+            { left: `${hitPosition * 100}%` }
+          ]} />
+        )}
+      </View>
+      <SafeAreaView style={styles.safeContainer} edges={['left','right','bottom']}>
+
+        <View style={styles.container}>
+          {/* Golf ball - centered in available space */}
+          <TouchableOpacity
+            style={[styles.golfBallContainer, { bottom: ballBottomOffset }]}
+            onPress={handleBallPress}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={require('../assets/ball/MainBall.png')}
+              style={[styles.golfBall, { width: golfBallSize, height: golfBallSize }]}
+              resizeMode="contain"
+            />
+            <View style={styles.ballTextContainer}>
+              <Text style={styles.ballText}>
+                {isPlaying ? 'STOP' : 'START'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Control Bars - Fixed at bottom center */}
+          <View style={styles.controlBarsContainer}>
+            {/* BPM Bar - Top (TESTING: Locked at 70 BPM, clicking stops playback) */}
+            <View style={styles.bpmBar}>
+              <TouchableOpacity
+                style={styles.barSection}
+                onPress={() => {
+                  if (isPlaying) {
+                    handleBallPress(); // Stop playback
+                  }
+                }}
+              >
+                <Image
+                  source={require('../assets/icons/minus.png')}
+                  style={[styles.iconImage, { opacity: 0.3 }]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+
+              <View style={styles.verticalDivider} />
+
+              <View style={styles.barSection}>
+                <Text style={styles.bpmValue}>{bpm}</Text>
+              </View>
+
+              <View style={styles.verticalDivider} />
+
+              <TouchableOpacity
+                style={styles.barSection}
+                onPress={() => {
+                  if (isPlaying) {
+                    handleBallPress(); // Stop playback
+                  }
+                }}
+              >
+                <Image
+                  source={require('../assets/icons/plus.png')}
+                  style={[styles.iconImage, { opacity: 0.3 }]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Sound Type Bar - Bottom */}
+            <View style={styles.iconBar}>
+              <TouchableOpacity
+                style={[styles.barSection, soundType === 'tone' && styles.selectedSection]}
+                onPress={() => {
+                  if (listenMode) return; // Disabled in listen mode
+                  if (isPlaying) {
+                    handleBallPress(); // Stop playback
+                  } else {
+                    console.log('🎵 Tone selected');
+                    setSoundType('tone');
+                  }
+                }}
+                disabled={listenMode}
+              >
+                <Image
+                  source={require('../assets/icons/musical-note.png')}
+                  style={[styles.iconImage, listenMode && { opacity: 0.5 }]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+
+              <View style={styles.verticalDivider} />
+
+              <TouchableOpacity
+                style={[styles.barSection, soundType === 'beat' && styles.selectedSection]}
+                onPress={() => {
+                  if (listenMode) return; // Disabled in listen mode
+                  if (isPlaying) {
+                    handleBallPress(); // Stop playback
+                  } else {
+                    console.log('🥁 Beat selected');
+                    setSoundType('beat');
+                  }
+                }}
+                disabled={listenMode}
+              >
+                <Image
+                  source={require('../assets/icons/metronome.png')}
+                  style={[styles.iconImage, listenMode && { opacity: 0.5 }]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+
+              <View style={styles.verticalDivider} />
+
+              <TouchableOpacity
+                style={[styles.barSection, soundType === 'wind' && styles.selectedSection]}
+                onPress={() => {
+                  if (listenMode) return; // Disabled in listen mode
+                  if (isPlaying) {
+                    handleBallPress(); // Stop playback
+                  } else {
+                    console.log('💨 Wind selected');
+                    setSoundType('wind');
+                  }
+                }}
+                disabled={listenMode}
+              >
+                <Image
+                  source={require('../assets/icons/wind.png')}
+                  style={[styles.iconImage, listenMode && { opacity: 0.5 }]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Listen Mode Toggle Button - Bottom Left */}
+          <TouchableOpacity
+            style={styles.listenModeButton}
+            onPress={() => {
+              if (isPlaying) {
+                handleBallPress(); // Stop playback first
+              }
+              console.log(`⚡ Listen mode ${listenMode ? 'OFF' : 'ON'}`);
+              setListenMode(!listenMode);
+              setHitPosition(null); // Clear any previous hit indicator
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={[
+              styles.listenModeCircle,
+              listenMode && styles.listenModeActive
+            ]}>
+              <Image
+                source={require('../assets/icons/lightening.png')}
+                style={[
+                  styles.listenModeIconImage,
+                  listenMode && styles.listenModeIconImageActive
+                ]}
+                resizeMode="contain"
+              />
+            </View>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </ImageBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  backgroundImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  safeContainer: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  golfBallContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ballTextContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ballText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: 1,
+  },
+  controlBarsContainer: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  golfBall: {
+    // Dynamic size set inline based on screen height
+  },
+  bpmBar: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#333',
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 204.8,
+    height: 38.4,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  iconBar: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#333',
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 204.8,
+    height: 38.4,
+    marginTop: 8,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  barSection: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%',
+  },
+  verticalDivider: {
+    width: 1,
+    height: '70%',
+    backgroundColor: '#ddd',
+  },
+  barButtonText: {
+    color: '#333',
+    fontSize: 26,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+    lineHeight: 26,
+  },
+  bpmValue: {
+    fontSize: 23.2,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+  },
+  selectedSection: {
+    backgroundColor: '#e8f5e9',
+    borderRadius: 10,
+  },
+  iconImage: {
+    width: 19.2,
+    height: 19.2,
+  },
+  disabledBar: {
+    opacity: 0.5,
+  },
+  videoContainer: {
+    marginTop: 10,
+    marginHorizontal: 30,
+    backgroundColor: 'transparent',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#fff',
+    height: 40,
+    paddingHorizontal: 5,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  video: {
+    width: '100%',
+    height: VIDEO_HEIGHT,
+    backgroundColor: 'transparent',
+  },
+  listenModeButton: {
+    position: 'absolute',
+    left: 20,
+    bottom: 20,
+    zIndex: 10,
+  },
+  listenModeCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderWidth: 2,
+    borderColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  listenModeActive: {
+    backgroundColor: '#333',
+    borderColor: '#fff',
+  },
+  listenModeIconImage: {
+    width: 30,
+    height: 30,
+    tintColor: '#333',
+  },
+  listenModeIconImageActive: {
+    tintColor: '#fff',
+  },
+  hitIndicator: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    backgroundColor: '#fff',
+    zIndex: 100,
+  },
+});

@@ -38,6 +38,19 @@ export function usePuttIQDetector(defaultBpm = 30) {
   const [hitHistory, setHitHistory] = useState([]);
   const [debugMode, setDebugMode] = useState(false); // Debug mode off by default
 
+  // Visual compensation in milliseconds for UI alignment (default +20ms)
+  const [visualCompMs, setVisualCompMs] = useState(20);
+  const visualCompMsRef = useRef(20);
+  useEffect(() => { visualCompMsRef.current = visualCompMs; }, [visualCompMs]);
+
+  // Optional external clock: provide current video time in ms for perfect sync
+  const videoTimeProviderRef = useRef(null);
+  const setVideoTimeProvider = useCallback((providerFn) => {
+    // providerFn should be a sync function returning current time in milliseconds
+    // e.g., () => Math.round(player.currentTime * 1000)
+    videoTimeProviderRef.current = typeof providerFn === 'function' ? providerFn : null;
+  }, []);
+
   // Service references
   const metronomeRef = useRef(null);
   const aecStreamRef = useRef(null);
@@ -52,26 +65,6 @@ export function usePuttIQDetector(defaultBpm = 30) {
     const initialize = async () => {
       try {
         console.log('Initializing PuttIQ detector...');
-
-        // Initialize profiles FIRST to ensure metronome filtering works
-        try {
-          console.log('🚀 Initializing Profile System...');
-          const { profileManager } = require('../services/profiles/ProfileManager');
-          const { getDeviceId } = require('../services/auth');
-          const deviceId = await getDeviceId();
-          console.log('  Device ID:', deviceId);
-          
-          await profileManager.initialize(deviceId);
-          
-          const profiles = profileManager.getEnabledProfiles();
-          console.log('✅ Profile manager initialized successfully!');
-          console.log('  - Target profiles:', profiles.target.length, profiles.target.map(p => p.name));
-          console.log('  - Ignore profiles:', profiles.ignore.length, profiles.ignore.map(p => p.name));
-          console.log('  - Metronome filtering:', profiles.ignore.some(p => p.name.includes('Metronome')) ? 'ACTIVE' : 'NOT ACTIVE');
-        } catch (profileError) {
-          console.error('❌ Failed to initialize profiles:', profileError);
-          console.error('  Error details:', profileError.message);
-        }
 
         // Initialize metronome (before permission request)
         try {
@@ -99,16 +92,15 @@ export function usePuttIQDetector(defaultBpm = 30) {
             energyThresh: 3,       // Reduced sensitivity by 30% for fewer false positives
             zcrThresh: 0.10,       // Very low threshold for putter detection
             tickGuardMs: 50,       // Smaller guard since we have listening zone
-            useProfiles: true,     // Explicitly enable profile-based detection
-            debugMode: false,      // Debug logging off by default
+            debugMode: true,       // Debug logging enabled for troubleshooting
             calibrationMode: false, // Calibration mode off by default
             audioGain: 85,         // Reduced by 30% from 120 for optimal detection
-            
+
             // Listening zone configuration - only detect in middle portion of beat
             useListeningZone: true,      // Enable listening zone feature
             listeningZonePercent: 0.60,  // Listen for 60% of beat period (expanded by 50%)
             listeningZoneOffset: 0.20,   // Start at 20% into beat (20%-80%)
-            
+
             getUpcomingTicks: () => {
               return metronomeRef.current ? metronomeRef.current.getNextTicks(8) : [];
             },
@@ -122,35 +114,56 @@ export function usePuttIQDetector(defaultBpm = 30) {
             onStrike: (strikeEvent) => {
               console.log('⚡ Strike detected in hook:', {
                 energy: strikeEvent.energy.toFixed(6),
-                quality: strikeEvent.quality,
-                profileMatch: strikeEvent.profileMatch
+                quality: strikeEvent.quality
               });
               if (mounted) {
-                // Calculate position in beat
+                // Calculate position relative to NEAREST beat, center at beats
                 const period = 60000 / bpm;
                 const ticks = metronomeRef.current ? metronomeRef.current.getNextTicks(2) : [];
                 let positionInBeat = 0.5; // Default to center
-                
-                if (ticks.length > 0) {
-                  const lastTick = ticks[0] <= strikeEvent.timestamp ? ticks[0] : ticks[0] - period;
-                  positionInBeat = ((strikeEvent.timestamp - lastTick) % period) / period;
+                const timestampAdj = strikeEvent.timestamp + (visualCompMsRef.current || 0);
+
+                if (videoTimeProviderRef.current) {
+                  // Use video time as the clock for perfect alignment
+                  const videoNow = Number(videoTimeProviderRef.current()); // ms
+                  if (Number.isFinite(videoNow)) {
+                    const t = videoNow + (visualCompMsRef.current || 0);
+                    const r = ((t % period) + period) % period; // 0..period
+                    const half = period / 2;
+                    const delta = r <= half ? r : (r - period); // signed distance to nearest beat
+                    const clamped = Math.max(-half, Math.min(half, delta));
+                    // Right=early, Left=late with center at beat
+                    positionInBeat = 0.5 - (clamped / half) * 0.5;
+                  }
+                } else if (ticks.length > 0) {
+                  // Fallback to metronome ticks if no video clock provided
+                  const nextTickCandidate = ticks[0] >= timestampAdj ? ticks[0] : (ticks[0] + period);
+                  const prevTickCandidate = nextTickCandidate - period;
+                  const distPrev = Math.abs(timestampAdj - prevTickCandidate);
+                  const distNext = Math.abs(timestampAdj - nextTickCandidate);
+                  const nearestTick = distPrev <= distNext ? prevTickCandidate : nextTickCandidate;
+                  const delta = timestampAdj - nearestTick; // negative = early, positive = late
+                  const half = period / 2;
+                  const clamped = Math.max(-half, Math.min(half, delta));
+                  positionInBeat = 0.5 - (clamped / half) * 0.5;
                 }
-                
-                // Add position to strike event
+
+                // Add position to strike event (include adjusted timestamp used for UI)
                 const hitWithPosition = {
                   ...strikeEvent,
+                  adjustedTimestamp: timestampAdj,
                   positionInBeat
                 };
-                
+
                 setLastHit(hitWithPosition);
-                
+
                 // Add to history
-                setHitHistory(prev => [...prev.slice(-9), { 
+                setHitHistory(prev => [...prev.slice(-9), {
                   position: positionInBeat,
                   timestamp: strikeEvent.timestamp,
                   quality: strikeEvent.quality
                 }]);
-                
+
                 // Auto-clear hit display after 2 seconds
                 setTimeout(() => {
                   if (mounted) setLastHit(null);
@@ -158,9 +171,9 @@ export function usePuttIQDetector(defaultBpm = 30) {
               }
             }
           };
-          
+
           detectorRef.current = await DetectorFactory.createDetector(detectorOptions);
-          
+
           // Log detector capabilities
           const capabilities = await DetectorFactory.getCapabilities();
           console.log('Detector capabilities:', capabilities);
@@ -184,16 +197,16 @@ export function usePuttIQDetector(defaultBpm = 30) {
     // Cleanup on unmount
     return () => {
       mounted = false;
-      
+
       // Clean up services
       if (metronomeRef.current) {
         metronomeRef.current.dispose();
       }
-      
+
       if (detectorRef.current && detectorRef.current.isRunning) {
         detectorRef.current.stop();
       }
-      
+
       if (aecStreamRef.current) {
         disableAEC(aecStreamRef.current);
       }
@@ -296,43 +309,60 @@ export function usePuttIQDetector(defaultBpm = 30) {
       console.log('Metronome started');
 
       setRunning(true);
-      
+
       // Start stats monitoring
       statsIntervalRef.current = startStatsMonitoring();
-      
+
       // Start position tracking for visual feedback
       positionIntervalRef.current = setInterval(() => {
-        if (metronomeRef.current && metronomeRef.current.getIsRunning()) {
+        const period = metronomeRef.current ? metronomeRef.current.getPeriod() : (60000 / bpm);
+
+        if (videoTimeProviderRef.current) {
+          const videoNow = Number(videoTimeProviderRef.current()); // ms
+          if (Number.isFinite(videoNow)) {
+            const r = ((videoNow % period) + period) % period; // 0..period
+            const half = period / 2;
+            const delta = r <= half ? r : (r - period);
+            const clamped = Math.max(-half, Math.min(half, delta));
+            const position = 0.5 - (clamped / half) * 0.5; // Right=early, Left=late
+            setBeatPosition(position);
+          }
+        } else if (metronomeRef.current && metronomeRef.current.getIsRunning()) {
           const now = performance.now();
-          const period = metronomeRef.current.getPeriod();
           const ticks = metronomeRef.current.getNextTicks(2);
-          
           if (ticks.length > 0) {
-            const lastTick = ticks[0] <= now ? ticks[0] : ticks[0] - period;
-            const position = ((now - lastTick) % period) / period;
+            const nextTickCandidate = ticks[0] >= now ? ticks[0] : (ticks[0] + period);
+            const prevTickCandidate = nextTickCandidate - period;
+            const distPrev = Math.abs(now - prevTickCandidate);
+            const distNext = Math.abs(now - nextTickCandidate);
+            const nearestTick = distPrev <= distNext ? prevTickCandidate : nextTickCandidate;
+            const delta = now - nearestTick;
+            const half = period / 2;
+            const clamped = Math.max(-half, Math.min(half, delta));
+            const position = 0.5 - (clamped / half) * 0.5;
             setBeatPosition(position);
           }
         }
       }, 16); // ~60fps update rate
-      
+
     } catch (error) {
       console.error('Failed to start:', error);
-      
+
       // Clean up on error
       if (metronomeRef.current) {
         metronomeRef.current.stop();
       }
-      
+
       if (detectorRef.current) {
         await detectorRef.current.stop();
       }
-      
+
       if (aecStreamRef.current) {
         disableAEC(aecStreamRef.current);
         aecStreamRef.current = null;
         setAecActive(false);
       }
-      
+
       setRunning(false);
     }
   }, [isInitialized, isRunning, permissionGranted]);
@@ -354,7 +384,7 @@ export function usePuttIQDetector(defaultBpm = 30) {
       // Stop detector
       if (detectorRef.current) {
         await detectorRef.current.stop();
-        
+
         // Get final stats
         const stats = detectorRef.current.getStats();
         console.log('Final detector stats:', stats);
@@ -373,7 +403,7 @@ export function usePuttIQDetector(defaultBpm = 30) {
         clearInterval(statsIntervalRef.current);
         statsIntervalRef.current = null;
       }
-      
+
       // Clear position tracking interval
       if (positionIntervalRef.current) {
         clearInterval(positionIntervalRef.current);
@@ -384,7 +414,7 @@ export function usePuttIQDetector(defaultBpm = 30) {
       setLastHit(null);
       setBeatPosition(0);
       setHitHistory([]);
-      
+
       console.log('PuttIQ detector stopped');
     } catch (error) {
       console.error('Error stopping detector:', error);
@@ -398,7 +428,7 @@ export function usePuttIQDetector(defaultBpm = 30) {
   const updateBpm = useCallback((newBpm) => {
     const clampedBpm = Math.max(30, Math.min(60, Math.round(newBpm)));
     setBpm(clampedBpm);
-    
+
     if (metronomeRef.current) {
       metronomeRef.current.setBpm(clampedBpm);
     }
@@ -412,10 +442,10 @@ export function usePuttIQDetector(defaultBpm = 30) {
 
     // Map sensitivity (0-1) to energy threshold (8-2) - MORE SENSITIVE RANGE
     const energyThresh = 8 - (sensitivity * 6);
-    
+
     // Map sensitivity to audio gain (10-100x amplification)
     const audioGain = 10 + (sensitivity * 90);
-    
+
     detectorRef.current.updateParams({
       energyThresh,
       zcrThresh: 0.12 + (sensitivity * 0.13), // 0.12-0.25 range (lower floor)
@@ -424,6 +454,15 @@ export function usePuttIQDetector(defaultBpm = 30) {
 
     console.log('Updated sensitivity:', { sensitivity, energyThresh, audioGain });
   }, []);
+
+  // Visual compensation controls
+  const updateVisualCompMs = useCallback((ms) => {
+    const clamped = Math.max(-200, Math.min(200, Math.round(ms || 0)));
+    setVisualCompMs(clamped);
+    console.log('Visual compensation (ms):', clamped);
+  }, []);
+
+  const getVisualCompMs = useCallback(() => visualCompMsRef.current, []);
 
   /**
    * Start monitoring detector statistics
@@ -460,9 +499,9 @@ export function usePuttIQDetector(defaultBpm = 30) {
       const newMode = !prev;
       console.log(`Debug mode: ${newMode ? 'ON' : 'OFF'}`);
       if (detectorRef.current) {
-        detectorRef.current.updateParams({ 
+        detectorRef.current.updateParams({
           debugMode: newMode,
-          calibrationMode: newMode 
+          calibrationMode: newMode
         });
       }
       return newMode;
@@ -477,11 +516,11 @@ export function usePuttIQDetector(defaultBpm = 30) {
 
     const period = metronomeRef.current.getPeriod();
     const ticks = metronomeRef.current.getNextTicks(2);
-    
+
     // Find nearest tick
     let nearestTick = ticks[0];
     let minDiff = Math.abs(lastHit.timestamp - ticks[0]);
-    
+
     for (const tick of ticks) {
       const diff = Math.abs(lastHit.timestamp - tick);
       if (diff < minDiff) {
@@ -491,9 +530,10 @@ export function usePuttIQDetector(defaultBpm = 30) {
     }
 
     // Calculate timing
-    const timingDiff = lastHit.timestamp - nearestTick;
+    const baseTs = lastHit.adjustedTimestamp ?? lastHit.timestamp;
+    const timingDiff = baseTs - nearestTick;
     const accuracy = 1 - (Math.abs(timingDiff) / (period / 2));
-    
+
     return {
       timingDiff,
       accuracy: Math.max(0, Math.min(1, accuracy)),
@@ -514,7 +554,8 @@ export function usePuttIQDetector(defaultBpm = 30) {
     beatPosition,
     hitHistory,
     debugMode,
-    
+    visualCompMs,
+
     // Methods
     start,
     stop,
@@ -522,7 +563,12 @@ export function usePuttIQDetector(defaultBpm = 30) {
     updateSensitivity,
     resetCalibration,
     toggleDebugMode,
-    getTimingAccuracy
+    getTimingAccuracy,
+    updateVisualCompMs,
+    getVisualCompMs,
+
+    // External video clock binding for perfect sync
+    setVideoTimeProvider
   };
 }
 

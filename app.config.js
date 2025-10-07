@@ -4,12 +4,12 @@ export default {
     slug: "PuttIQ2",
     version: "1.0.0",
     orientation: "landscape",
-    icon: "./assets/icon.png",
+    icon: "./assets/Icon_nobackground.jpg",
     userInterfaceStyle: "light",
     splash: {
-      image: "./assets/splash.png",
+      image: "./assets/Logo_NoBackground.jpg",
       resizeMode: "contain",
-      backgroundColor: "#ffffff"
+      backgroundColor: "#000000"
     },
     ios: {
       supportsTablet: true,
@@ -24,8 +24,8 @@ export default {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: "./assets/adaptive-icon.png",
-        backgroundColor: "#ffffff"
+        foregroundImage: "./assets/Icon_nobackground.jpg",
+        backgroundColor: "#000000"
       },
       package: "com.puttiq.app",
       edgeToEdgeEnabled: true,
@@ -45,8 +45,8 @@ export default {
           }
         }
       ],
-      "./plugins/withIOSAudioSession"
-      // "expo-dev-client"
+      "./plugins/withIOSAudioSession",
+      "expo-audio"
     ],
     extra: {
       eas: {

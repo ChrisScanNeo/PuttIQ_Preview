@@ -78,7 +78,8 @@ export default function TimingZoneBar({
     if (!lastHitPosition) return '';
     const diff = lastHitPosition - 0.5;
     if (Math.abs(diff) < 0.05) return 'PERFECT!';
-    if (diff < 0) return `EARLY ${Math.abs(diff * 100).toFixed(0)}%`;
+    // Early is to the RIGHT of center (diff > 0), late to the LEFT (diff < 0)
+    if (diff > 0) return `EARLY ${Math.abs(diff * 100).toFixed(0)}%`;
     return `LATE ${Math.abs(diff * 100).toFixed(0)}%`;
   };
 

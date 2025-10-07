@@ -35,7 +35,7 @@ export class SimpleAudioEngine {
     });
 
     // Create a pool of players with the existing metronome sound
-    const audioSource = require('../../assets/sound/metronome-85688.mp3');
+    const audioSource = require('../../assets/sounds/Metronome/ToneClick.mp3');
 
     for (let i = 0; i < this.poolSize; i++) {
       try {

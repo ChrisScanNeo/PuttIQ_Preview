@@ -12,9 +12,9 @@ export class DetectorFactory {
    */
   static async createDetector(options = {}) {
     const detectorType = await this.getAvailableDetectorType();
-    
-    console.log(`DetectorFactory: Creating ${detectorType} detector`);
-    
+
+    console.log(`\n🏗️  DetectorFactory: Creating ${detectorType.toUpperCase()} detector\n`);
+
     switch (detectorType) {
       case 'acoustic':
         return this.createAcousticDetector(options);
@@ -38,29 +38,45 @@ export class DetectorFactory {
    * @returns {Promise<string>} Detector type identifier
    */
   static async getAvailableDetectorType() {
-    // Check if we're in development/debug mode
+    console.log('🔍 DetectorFactory: Determining available detector type...');
+    console.log(`  Platform: ${Platform.OS}`);
+    console.log(`  Dev Mode: ${__DEV__ ? 'YES' : 'NO'}`);
+
+    // Check if we're in development/debug mode on web
     if (__DEV__ && Platform.OS === 'web') {
+      console.log('  ℹ️  Web platform in dev mode → Using DEBUG detector');
       return 'debug';
     }
 
     // Try to load ExpoPlayAudioStream (requires custom build)
+    console.log('  🔌 Checking for ExpoPlayAudioStream module...');
     try {
       const { ExpoPlayAudioStream } = require('@cjblack/expo-audio-stream');
+      console.log(`    ✅ Module loaded: ${ExpoPlayAudioStream ? 'YES' : 'NO'}`);
+
       if (ExpoPlayAudioStream && typeof ExpoPlayAudioStream.startRecording === 'function') {
-        return 'acoustic'; // Use acoustic detector with expo-audio-stream
+        console.log('    ✅ startRecording function: AVAILABLE');
+        console.log('  ✅ ACOUSTIC detector selected (professional DSP with microphone)');
+        return 'acoustic';
+      } else {
+        console.log('    ❌ startRecording function: NOT AVAILABLE');
+        console.log('  ⚠️  Module exists but missing required functions');
       }
     } catch (e) {
-      console.log('ExpoPlayAudioStream not available (expected in Expo Go)');
+      console.log(`    ❌ Module load failed: ${e.message}`);
+      console.log('  ⚠️  ExpoPlayAudioStream not available (requires custom dev client build)');
+      console.log('  ℹ️  Running in Expo Go? Build with: eas build --profile development');
     }
 
     // Fallback to simple detector for basic functionality
-    // This will work in Expo Go
     if (Platform.OS === 'ios' || Platform.OS === 'android') {
-      console.log('Using simple detector for Expo Go compatibility');
+      console.log('  ⚠️  SIMPLE detector selected (UI testing mode - random hits only)');
+      console.log('  ℹ️  No real audio detection available in this mode');
       return 'simple';
     }
 
     // Use debug detector for web/development
+    console.log('  ℹ️  DEBUG detector selected (fallback mode)');
     return 'debug';
   }
 
