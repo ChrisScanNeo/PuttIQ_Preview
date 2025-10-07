@@ -326,7 +326,7 @@ export default function HomeScreen({ user }) {
   const detector = useVideoSyncDetector({
     bpm,
     videoPlayer: player,
-    debugMode: false, // Production mode - no debug logging
+    debugMode: true, // Temporarily enabled for diagnosis
     onHitDetected: (hitEvent) => {
       // Calculate color based on error in milliseconds
       const colorData = getHitColor(hitEvent.accuracy, hitEvent.errorMs, hitEvent.position);
@@ -343,6 +343,10 @@ export default function HomeScreen({ user }) {
 
       // Bar will remain visible until video ends, then cleared automatically
       // (No timeout needed - cleared in video end listener)
+    },
+    onAudioLevel: (audioData) => {
+      // No-op callback - detector expects this even if we don't use it
+      // This ensures the detector's audio processing loop works correctly
     }
   });
 
