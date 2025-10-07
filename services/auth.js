@@ -82,7 +82,12 @@ export const authenticateUser = async () => {
           isPremium: false, // Will be updated by IAP
           hasCompletedOnboarding: false,
           settings: {
-            defaultBPM: 30,
+            bpmPreferences: {
+              tone: 70,
+              beat: 70,
+              wind: 70,
+              detect: 70, // For listen mode
+            },
             soundEnabled: true,
             hapticEnabled: false,  // Disabled by default
           },
@@ -128,7 +133,12 @@ export const authenticateUser = async () => {
           isPremium: false,
           hasCompletedOnboarding: false,
           settings: {
-            defaultBPM: 30,
+            bpmPreferences: {
+              tone: 70,
+              beat: 70,
+              wind: 70,
+              detect: 70, // For listen mode
+            },
             soundEnabled: true,
             hapticEnabled: false,  // Disabled by default
           },
@@ -148,9 +158,62 @@ export const authenticateUser = async () => {
       }
     }
 
+    // Migrate old defaultBPM setting to new bpmPreferences structure
+    if (userData.settings && userData.settings.defaultBPM !== undefined && !userData.settings.bpmPreferences) {
+      console.log('🔄 Migrating old defaultBPM setting to bpmPreferences');
+      const oldBpm = userData.settings.defaultBPM;
+      // Clamp to valid range (70-80 BPM)
+      const validBpm = Math.max(70, Math.min(80, oldBpm));
+      console.log(`Old BPM: ${oldBpm}, clamped to valid range: ${validBpm}`);
+      userData.settings.bpmPreferences = {
+        tone: validBpm,
+        beat: validBpm,
+        wind: validBpm,
+        detect: validBpm,
+      };
+      delete userData.settings.defaultBPM;
+
+      // Save migrated settings
+      try {
+        const userRef = doc(db, 'users', userId);
+        await setDoc(userRef, { settings: userData.settings }, { merge: true });
+        await AsyncStorage.setItem('cachedUserData', JSON.stringify(userData));
+      } catch (err) {
+        console.log('Migration saved to cache only (offline)');
+      }
+    }
+
+    // Fix invalid BPM values (if already migrated but with wrong values)
+    if (userData.settings?.bpmPreferences) {
+      let needsFixing = false;
+      const fixed = {};
+
+      for (const [type, bpm] of Object.entries(userData.settings.bpmPreferences)) {
+        if (bpm < 70 || bpm > 80) {
+          needsFixing = true;
+          fixed[type] = Math.max(70, Math.min(80, bpm));
+          console.log(`⚠️ Fixed invalid BPM for ${type}: ${bpm} → ${fixed[type]}`);
+        } else {
+          fixed[type] = bpm;
+        }
+      }
+
+      if (needsFixing) {
+        userData.settings.bpmPreferences = fixed;
+        try {
+          const userRef = doc(db, 'users', userId);
+          await setDoc(userRef, { settings: userData.settings }, { merge: true });
+          await AsyncStorage.setItem('cachedUserData', JSON.stringify(userData));
+          console.log('✅ Fixed invalid BPM values in user settings');
+        } catch (err) {
+          console.log('BPM fix saved to cache only (offline)');
+        }
+      }
+    }
+
     // Store user ID locally for quick access
     await AsyncStorage.setItem('userId', userId);
-    
+
     return {
       ...userData,
       uid: userId,
@@ -224,15 +287,116 @@ export const updateUserSettings = async (settings) => {
   try {
     const userId = await AsyncStorage.getItem('userId');
     if (!userId) return;
-    
+
     const userRef = doc(db, 'users', userId);
     await setDoc(userRef, {
       settings: settings,
     }, { merge: true });
-    
+
     // Also store locally for quick access
     await AsyncStorage.setItem('userSettings', JSON.stringify(settings));
+
+    // Update cached user data
+    const cachedUser = await AsyncStorage.getItem('cachedUserData');
+    if (cachedUser) {
+      const userData = JSON.parse(cachedUser);
+      userData.settings = settings;
+      await AsyncStorage.setItem('cachedUserData', JSON.stringify(userData));
+    }
   } catch (error) {
     console.error('Error updating user settings:', error);
+  }
+};
+
+// Load BPM preferences from user settings (Firebase + AsyncStorage fallback)
+export const loadBpmPreferences = async () => {
+  try {
+    const userId = await AsyncStorage.getItem('userId');
+    if (!userId) {
+      console.log('No user ID, returning default BPM preferences');
+      return { tone: 70, beat: 70, wind: 70, detect: 70 };
+    }
+
+    // Try to get from cached user data first (faster)
+    const cachedUser = await AsyncStorage.getItem('cachedUserData');
+    if (cachedUser) {
+      const userData = JSON.parse(cachedUser);
+      if (userData.settings?.bpmPreferences) {
+        console.log('📊 Loaded BPM preferences from cache:', userData.settings.bpmPreferences);
+        return userData.settings.bpmPreferences;
+      }
+    }
+
+    // Fallback to Firebase
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        if (userData.settings?.bpmPreferences) {
+          console.log('📊 Loaded BPM preferences from Firebase:', userData.settings.bpmPreferences);
+          return userData.settings.bpmPreferences;
+        }
+      }
+    } catch (firebaseError) {
+      console.log('Firebase offline, using defaults');
+    }
+
+    // Return defaults if nothing found
+    console.log('No BPM preferences found, using defaults');
+    return { tone: 70, beat: 70, wind: 70, detect: 70 };
+
+  } catch (error) {
+    console.error('Error loading BPM preferences:', error);
+    return { tone: 70, beat: 70, wind: 70, detect: 70 };
+  }
+};
+
+// Save a single BPM preference for a specific sound type
+export const saveBpmPreference = async (soundType, bpm) => {
+  try {
+    const userId = await AsyncStorage.getItem('userId');
+    if (!userId) {
+      console.warn('No user ID, cannot save BPM preference');
+      return;
+    }
+
+    // Get current preferences
+    const currentPreferences = await loadBpmPreferences();
+
+    // Update the specific sound type
+    const updatedPreferences = {
+      ...currentPreferences,
+      [soundType]: bpm,
+    };
+
+    console.log(`💾 Saving BPM preference: ${soundType} = ${bpm}`, updatedPreferences);
+
+    // Update in Firebase
+    try {
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, {
+        settings: {
+          bpmPreferences: updatedPreferences,
+        },
+      }, { merge: true });
+    } catch (firebaseError) {
+      console.log('Firebase offline, saving to cache only');
+    }
+
+    // Update cached user data
+    const cachedUser = await AsyncStorage.getItem('cachedUserData');
+    if (cachedUser) {
+      const userData = JSON.parse(cachedUser);
+      if (!userData.settings) {
+        userData.settings = {};
+      }
+      userData.settings.bpmPreferences = updatedPreferences;
+      await AsyncStorage.setItem('cachedUserData', JSON.stringify(userData));
+    }
+
+  } catch (error) {
+    console.error('Error saving BPM preference:', error);
   }
 };

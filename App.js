@@ -5,10 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Asset } from 'expo-asset';
 import { Audio } from 'expo-av';
-// Using MinimalNavigator for simplified UI
-import MinimalNavigator from './MinimalNavigator';
-// import SimpleNavigator from './navigation/SimpleNavigator';
-// import AppNavigator from './navigation/AppNavigator';
+import HomeScreen from './screens/HomeScreen';
 import { authenticateUser } from './services/auth';
 
 export default function App() {
@@ -103,7 +100,7 @@ export default function App() {
   
   return (
     <SafeAreaProvider>
-      <MinimalNavigator user={user} />
+      <HomeScreen user={user} />
       <StatusBar style="auto" />
     </SafeAreaProvider>
   );

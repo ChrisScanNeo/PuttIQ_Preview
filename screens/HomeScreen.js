@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, TouchableOpacity, ImageBackground, Image, Dimen
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useVideoSyncDetector } from '../hooks/useVideoSyncDetector';
+import { loadBpmPreferences, saveBpmPreference } from '../services/auth';
 
 const { height: screenHeight } = Dimensions.get('window');
 
@@ -25,12 +26,12 @@ export default function HomeScreen({ user }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoKey, setVideoKey] = useState('tone-70'); // Track video key for re-rendering
   const [restartTimeout, setRestartTimeout] = useState(null); // Track restart timer
+  const [bpmPreferences, setBpmPreferences] = useState({ tone: 70, beat: 70, wind: 70, detect: 70 }); // Store BPM for each type
 
   // Listen mode state
   const [listenMode, setListenMode] = useState(false);
   const [hitPosition, setHitPosition] = useState(null); // Position of detected hit (0-1)
   const [hitFeedback, setHitFeedback] = useState(null); // Colored feedback bar data
-  const [liveAudioLevel, setLiveAudioLevel] = useState(null); // Live audio level display
 
   // Video loading state
   const [videoLoading, setVideoLoading] = useState(true); // True when video is loading
@@ -193,21 +194,38 @@ export default function HomeScreen({ user }) {
   // Select the appropriate video map based on platform
   const videoMap = Platform.OS === 'ios' ? videoMapIOS : videoMapAndroid;
 
-  // Debug: Log video map on mount
+  // Load BPM preferences on mount
   useEffect(() => {
-    const keys = Object.keys(videoMap).sort();
+    const initializeBpmPreferences = async () => {
+      const preferences = await loadBpmPreferences();
+      setBpmPreferences(preferences);
+      // Set initial BPM to tone preference
+      setBpm(preferences.tone);
+    };
 
-    console.log(`📊 Video Map Loaded (${Platform.OS.toUpperCase()}):`, {
-      platform: Platform.OS,
-      totalVideos: keys.length,
-      tones: keys.filter(k => k.startsWith('tone-')).length,
-      beats: keys.filter(k => k.startsWith('beat-')).length,
-      winds: keys.filter(k => k.startsWith('wind-')).length,
-      detects: keys.filter(k => k.startsWith('detect-')).length,
-      bpmRange: '70-80',
-      allKeys: keys
-    });
+    initializeBpmPreferences();
   }, []);
+
+
+  // Auto-restore BPM when switching sound types (tone, beat, wind)
+  useEffect(() => {
+    if (!listenMode) {
+      const savedBpm = bpmPreferences[soundType];
+      setBpm(savedBpm);
+    }
+  }, [soundType, bpmPreferences, listenMode]);
+
+  // Auto-restore BPM when toggling listen mode
+  useEffect(() => {
+    if (listenMode) {
+      const savedBpm = bpmPreferences.detect;
+      setBpm(savedBpm);
+    } else {
+      // When turning off listen mode, restore the current sound type's BPM
+      const savedBpm = bpmPreferences[soundType];
+      setBpm(savedBpm);
+    }
+  }, [listenMode, bpmPreferences, soundType]);
 
   // Get video source based on sound type, BPM, and listen mode
   const getVideoSource = (type, bpmValue, listenModeActive) => {
@@ -215,29 +233,15 @@ export default function HomeScreen({ user }) {
     if (listenModeActive) {
       const detectKey = `detect-${bpmValue}`;
       const video = videoMap[detectKey];
-
-      if (!video) {
-        console.warn(`❌ Detect video not found for ${bpmValue} BPM, falling back to 70 BPM`);
-        console.log(`📹 Loading fallback: detect-70`);
-        return videoMap['detect-70'];
-      }
-
-      console.log(`✅ Loading detect video: ${detectKey}`);
-      return video;
+      // Fallback to 70 BPM if video not found
+      return video || videoMap['detect-70'];
     }
 
     // Regular mode: use sound-specific video
     const key = `${type}-${bpmValue}`;
     const video = videoMap[key];
-
-    if (!video) {
-      console.warn(`❌ Video not found for ${type} at ${bpmValue} BPM, falling back to 70 BPM`);
-      console.log(`📹 Loading fallback: ${type}-70`);
-      return videoMap[`${type}-70`];
-    }
-
-    console.log(`✅ Loading video: ${key} (Type: ${type}, BPM: ${bpmValue})`);
-    return video;
+    // Fallback to 70 BPM if video not found
+    return video || videoMap[`${type}-70`];
   };
 
   // Get current video source (updates when soundType or listenMode changes)
@@ -251,14 +255,6 @@ export default function HomeScreen({ user }) {
   // Update player source when video changes (BPM, sound type, or listen mode)
   useEffect(() => {
     if (player && currentVideoSource) {
-      console.log('🔄 Updating player source:', {
-        key: videoKey,
-        isPlaying: player.playing,
-        soundType,
-        bpm,
-        listenMode
-      });
-
       // Replace video source (use replaceAsync on iOS for better performance)
       if (Platform.OS === 'ios') {
         player.replaceAsync(currentVideoSource).catch(err => {
@@ -274,14 +270,7 @@ export default function HomeScreen({ user }) {
   useEffect(() => {
     if (!player) return;
 
-    const subscription = player.addListener('statusChange', ({ status, error, oldStatus }) => {
-      console.log('📹 Video status change:', {
-        oldStatus,
-        newStatus: status,
-        videoKey,
-        error: error?.message
-      });
-
+    const subscription = player.addListener('statusChange', ({ status, error }) => {
       switch (status) {
         case 'loading':
           setVideoLoading(true);
@@ -293,7 +282,6 @@ export default function HomeScreen({ user }) {
           setVideoLoading(false);
           setVideoReady(true);
           setVideoError(null);
-          console.log('✅ Video ready to play:', videoKey);
           break;
 
         case 'error':
@@ -317,20 +305,8 @@ export default function HomeScreen({ user }) {
   const detector = useVideoSyncDetector({
     bpm,
     videoPlayer: player,
-    debugMode: true, // Set to true for debug logging
-    onAudioLevel: (audioData) => {
-      // Update live audio display every frame
-      setLiveAudioLevel(audioData);
-    },
+    debugMode: false, // Production mode - no debug logging
     onHitDetected: (hitEvent) => {
-      console.log('🎯 Hit detected!', {
-        position: (hitEvent.position * 100).toFixed(1) + '%',
-        accuracy: (hitEvent.accuracy * 100).toFixed(0) + '%',
-        errorMs: hitEvent.errorMs.toFixed(0) + 'ms',
-        timing: hitEvent.isEarly ? 'Early' : hitEvent.isLate ? 'Late' : 'Perfect',
-        distanceFromCenter: ((hitEvent.distanceFromCenter || 0) * 100).toFixed(1) + '%'
-      });
-
       // Calculate color based on error in milliseconds
       const colorData = getHitColor(hitEvent.accuracy, hitEvent.errorMs, hitEvent.position);
 
@@ -354,18 +330,6 @@ export default function HomeScreen({ user }) {
     if (!isPlaying) {
       const prefix = listenMode ? 'detect' : soundType;
       const newKey = `${prefix}-${bpm}`;
-      const videoExists = videoMap[newKey] !== undefined;
-
-      console.log(`🎥 Video key update:`, {
-        key: newKey,
-        soundType,
-        bpm,
-        listenMode,
-        platform: Platform.OS,
-        exists: videoExists ? '✅' : '❌',
-        willFallback: !videoExists
-      });
-
       setVideoKey(newKey);
     }
   }, [soundType, bpm, listenMode, isPlaying]);
@@ -377,8 +341,6 @@ export default function HomeScreen({ user }) {
     const subscription = player.addListener('playingChange', (event) => {
       // When video stops playing and we're at the end
       if (!event.isPlaying && isPlaying && player.currentTime >= player.duration - 0.1) {
-        console.log('🎬 Video ended, clearing hit feedback before restart...');
-
         // Clear hit feedback immediately when video ends (before 2-second gap)
         setHitFeedback(null);
         setHitPosition(null);
@@ -386,7 +348,6 @@ export default function HomeScreen({ user }) {
         // Wait 2 seconds, then restart from beginning
         const timeout = setTimeout(() => {
           if (isPlaying) {
-            console.log('🔄 Restarting video from frame 0');
             player.replay();
           }
         }, 2000);
@@ -402,27 +363,12 @@ export default function HomeScreen({ user }) {
 
   // Toggle play/pause when ball is clicked
   const handleBallPress = async () => {
-    // Prevent interaction while video is loading
-    if (videoLoading) {
-      console.log('⏳ Video still loading, please wait...');
+    // Prevent interaction while video is loading/errored/not ready
+    if (videoLoading || videoError || (!videoReady && !isPlaying)) {
       return;
     }
 
-    // Prevent play if video has error
-    if (videoError) {
-      console.log('❌ Cannot play - video error:', videoError);
-      return;
-    }
-
-    // Prevent play if video not ready
-    if (!videoReady && !isPlaying) {
-      console.log('⏳ Video not ready yet');
-      return;
-    }
-
-    console.log(`⚽ Ball clicked! isPlaying: ${isPlaying}, soundType: ${soundType}, bpm: ${bpm}, listenMode: ${listenMode}`);
     if (isPlaying) {
-      console.log('⏸️ Pausing video');
       // Clear any pending restart timer
       if (restartTimeout) {
         clearTimeout(restartTimeout);
@@ -433,21 +379,17 @@ export default function HomeScreen({ user }) {
 
       // Pause detector if listen mode active (keeps recording alive)
       if (listenMode && detector && detector.isRunning) {
-        console.log('⏸️ Pausing detector');
         detector.pause();
       }
     } else {
-      console.log('▶️ Playing video');
       player.play();
       setIsPlaying(true);
 
       // Start or resume detector if listen mode active
       if (listenMode && detector && detector.isInitialized) {
         if (!detector.isRunning) {
-          console.log('🎤 Starting detector');
           await detector.start();
         } else {
-          console.log('▶️ Resuming detector');
           detector.resume();
         }
       }
@@ -481,33 +423,6 @@ export default function HomeScreen({ user }) {
       style={styles.backgroundImage}
       resizeMode="cover"
     >
-      {/* Live Audio Level Display - Top Left Debug Overlay */}
-      {listenMode && liveAudioLevel && (
-        <View style={styles.audioLevelDisplay}>
-          <Text style={styles.audioLevelTitle}>LIVE AUDIO</Text>
-          <Text style={[
-            styles.audioLevelValue,
-            liveAudioLevel.isAboveThreshold ? styles.audioLevelHigh : styles.audioLevelNormal
-          ]}>
-            {liveAudioLevel.ratio.toFixed(1)}x
-            {liveAudioLevel.isAboveThreshold ? ' 🟢' : ''}
-            {liveAudioLevel.spikeNumber ? ` #${liveAudioLevel.spikeNumber}` : ''}
-          </Text>
-          <Text style={styles.audioLevelDetail}>
-            Level: {liveAudioLevel.level.toFixed(3)}
-          </Text>
-          <Text style={styles.audioLevelDetail}>
-            Baseline: {liveAudioLevel.baseline.toFixed(3)}
-          </Text>
-          <Text style={styles.audioLevelDetail}>
-            Threshold: {liveAudioLevel.threshold.toFixed(3)}
-          </Text>
-          <Text style={styles.audioLevelDetail}>
-            {liveAudioLevel.isListening ? '🎤 Listening' : '🔇 Not Listening'}
-          </Text>
-        </View>
-      )}
-
       {/* Tone Bar Video - At top of screen (outside safe area to stick to physical top) */}
       <View style={styles.videoContainer}>
         <VideoView
@@ -577,13 +492,19 @@ export default function HomeScreen({ user }) {
               <TouchableOpacity
                 style={styles.barSection}
                 disabled={videoLoading || isPlaying}
-                onPress={() => {
+                onPress={async () => {
                   if (isPlaying) {
                     handleBallPress(); // Stop playback first
                   } else {
                     const newBpm = Math.max(70, bpm - 1);
-                    console.log(`⬇️ BPM decreased to ${newBpm}`);
                     setBpm(newBpm);
+
+                    // Save to Firebase/cache
+                    const typeToSave = listenMode ? 'detect' : soundType;
+                    await saveBpmPreference(typeToSave, newBpm);
+
+                    // Update local state
+                    setBpmPreferences(prev => ({ ...prev, [typeToSave]: newBpm }));
                   }
                 }}
               >
@@ -605,13 +526,19 @@ export default function HomeScreen({ user }) {
               <TouchableOpacity
                 style={styles.barSection}
                 disabled={videoLoading || isPlaying}
-                onPress={() => {
+                onPress={async () => {
                   if (isPlaying) {
                     handleBallPress(); // Stop playback first
                   } else {
                     const newBpm = Math.min(80, bpm + 1);
-                    console.log(`⬆️ BPM increased to ${newBpm}`);
                     setBpm(newBpm);
+
+                    // Save to Firebase/cache
+                    const typeToSave = listenMode ? 'detect' : soundType;
+                    await saveBpmPreference(typeToSave, newBpm);
+
+                    // Update local state
+                    setBpmPreferences(prev => ({ ...prev, [typeToSave]: newBpm }));
                   }
                 }}
               >
@@ -632,7 +559,6 @@ export default function HomeScreen({ user }) {
                   if (isPlaying) {
                     handleBallPress(); // Stop playback
                   } else {
-                    console.log('🎵 Tone selected');
                     setSoundType('tone');
                   }
                 }}
@@ -654,7 +580,6 @@ export default function HomeScreen({ user }) {
                   if (isPlaying) {
                     handleBallPress(); // Stop playback
                   } else {
-                    console.log('🥁 Beat selected');
                     setSoundType('beat');
                   }
                 }}
@@ -676,7 +601,6 @@ export default function HomeScreen({ user }) {
                   if (isPlaying) {
                     handleBallPress(); // Stop playback
                   } else {
-                    console.log('💨 Wind selected');
                     setSoundType('wind');
                   }
                 }}
@@ -698,7 +622,6 @@ export default function HomeScreen({ user }) {
               if (isPlaying) {
                 handleBallPress(); // Stop playback first
               }
-              console.log(`⚡ Listen mode ${listenMode ? 'OFF' : 'ON'}`);
               setListenMode(!listenMode);
               setHitPosition(null); // Clear any previous hit indicator
             }}
@@ -729,41 +652,6 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
-  },
-  audioLevelDisplay: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#666',
-    minWidth: 180,
-    zIndex: 1000,
-  },
-  audioLevelTitle: {
-    color: '#999',
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  audioLevelValue: {
-    color: '#FFF',
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  audioLevelHigh: {
-    color: '#00FF00',
-  },
-  audioLevelNormal: {
-    color: '#FFCC00',
-  },
-  audioLevelDetail: {
-    color: '#CCC',
-    fontSize: 11,
-    marginBottom: 2,
   },
   safeContainer: {
     flex: 1,
