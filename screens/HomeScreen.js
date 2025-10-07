@@ -327,7 +327,7 @@ export default function HomeScreen({ user }) {
   const detector = useVideoSyncDetector({
     bpm,
     videoPlayer: player,
-    debugMode: true, // Set to true for debug logging
+    debugMode: false, // Set to true for debug logging
     onAudioLevel: (audioData) => {
       // Update live audio display every frame
       setLiveAudioLevel(audioData);

@@ -19,6 +19,7 @@ export default {
       infoPlist: {
         UIBackgroundModes: ["audio"],
         NSMicrophoneUsageDescription: "PuttIQ needs microphone access to detect the timing of your putting strokes.",
+        NSCameraUsageDescription: "PuttIQ does not use the camera. This permission is required by a system framework but is never accessed.",
         ITSAppUsesNonExemptEncryption: false
       }
     },
