@@ -270,6 +270,27 @@ export default function HomeScreen({ user }) {
   useEffect(() => {
     if (!player) return;
 
+    // Check initial status immediately (in case video is already loaded from cache)
+    const checkInitialStatus = () => {
+      if (player.status === 'readyToPlay') {
+        setVideoLoading(false);
+        setVideoReady(true);
+        setVideoError(null);
+      } else if (player.status === 'loading') {
+        setVideoLoading(true);
+        setVideoReady(false);
+        setVideoError(null);
+      } else if (player.status === 'error') {
+        setVideoLoading(false);
+        setVideoReady(false);
+        setVideoError('Video failed to load');
+      }
+    };
+
+    // Check status immediately
+    checkInitialStatus();
+
+    // Then listen for future status changes
     const subscription = player.addListener('statusChange', ({ status, error }) => {
       switch (status) {
         case 'loading':
