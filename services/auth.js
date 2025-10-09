@@ -83,10 +83,10 @@ export const authenticateUser = async () => {
           hasCompletedOnboarding: false,
           settings: {
             bpmPreferences: {
-              tone: 70,
-              beat: 70,
-              wind: 70,
-              detect: 70, // For listen mode
+              tone: 76,
+              beat: 76,
+              wind: 76,
+              detect: 76, // For listen mode
             },
             soundEnabled: true,
             hapticEnabled: false,  // Disabled by default
@@ -134,10 +134,10 @@ export const authenticateUser = async () => {
           hasCompletedOnboarding: false,
           settings: {
             bpmPreferences: {
-              tone: 70,
-              beat: 70,
-              wind: 70,
-              detect: 70, // For listen mode
+              tone: 76,
+              beat: 76,
+              wind: 76,
+              detect: 76, // For listen mode
             },
             soundEnabled: true,
             hapticEnabled: false,  // Disabled by default
@@ -314,7 +314,7 @@ export const loadBpmPreferences = async () => {
     const userId = await AsyncStorage.getItem('userId');
     if (!userId) {
       console.log('No user ID, returning default BPM preferences');
-      return { tone: 70, beat: 70, wind: 70, detect: 70 };
+      return { tone: 76, beat: 76, wind: 76, detect: 76 };
     }
 
     // Try to get from cached user data first (faster)
@@ -345,15 +345,15 @@ export const loadBpmPreferences = async () => {
 
     // Return defaults if nothing found
     console.log('No BPM preferences found, using defaults');
-    return { tone: 70, beat: 70, wind: 70, detect: 70 };
+    return { tone: 76, beat: 76, wind: 76, detect: 76 };
 
   } catch (error) {
     console.error('Error loading BPM preferences:', error);
-    return { tone: 70, beat: 70, wind: 70, detect: 70 };
+    return { tone: 76, beat: 76, wind: 76, detect: 76 };
   }
 };
 
-// Save a single BPM preference for a specific sound type
+// Save BPM preference - applies to ALL modes (tone, beat, wind, detect)
 export const saveBpmPreference = async (soundType, bpm) => {
   try {
     const userId = await AsyncStorage.getItem('userId');
@@ -362,16 +362,18 @@ export const saveBpmPreference = async (soundType, bpm) => {
       return;
     }
 
-    // Get current preferences
+    // Get current preferences (not needed anymore, but kept for compatibility)
     const currentPreferences = await loadBpmPreferences();
 
-    // Update the specific sound type
+    // Update ALL sound types with the same BPM (synced across all modes)
     const updatedPreferences = {
-      ...currentPreferences,
-      [soundType]: bpm,
+      tone: bpm,
+      beat: bpm,
+      wind: bpm,
+      detect: bpm,
     };
 
-    console.log(`💾 Saving BPM preference: ${soundType} = ${bpm}`, updatedPreferences);
+    console.log(`💾 Saving BPM to ALL modes: ${bpm}`, updatedPreferences);
 
     // Update in Firebase
     try {

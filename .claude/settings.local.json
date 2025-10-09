@@ -7,7 +7,8 @@
       "WebFetch(domain:docs.expo.dev)",
       "Bash(cat:*)",
       "Bash(npx patch-package:*)",
-      "Bash(timeout 20 npx expo start --no-dev --minify)"
+      "Bash(timeout 20 npx expo start --no-dev --minify)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

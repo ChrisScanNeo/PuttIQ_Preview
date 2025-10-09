@@ -33,10 +33,10 @@ export default function App() {
             require('./assets/grass-background.jpeg'),
             require('./assets/ball/MainBall.png'),
             require('./assets/Logo_NoBackground.jpg'),
-            require('./assets/swingBars/ios/tones/Tones_70BPM.mov'),
-            require('./assets/swingBars/ios/beats/Beats_70BPM.mov'),
-            require('./assets/swingBars/ios/wind/Wind_70BPM.mov'),
-            require('./assets/swingBars/ios/detect/Tones_Detect_70BPM.mov'), // Silent detect video
+            require('./assets/swingBars/ios/tones/Tones_76BPM.mov'),
+            require('./assets/swingBars/ios/beats/Beats_76BPM.mov'),
+            require('./assets/swingBars/ios/wind/Wind_76BPM.mov'),
+            require('./assets/swingBars/ios/detect/Tones_Detect_76BPM.mov'), // Silent detect video
             require('./assets/icons/minus.png'),
             require('./assets/icons/plus.png'),
             require('./assets/icons/musical-note.png'),

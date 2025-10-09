@@ -11,7 +11,7 @@
  * - Millisecond-based accuracy calculation
  */
 
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import { Platform } from 'react-native';
 
 export class VideoSyncDetectorV2 {
@@ -553,15 +553,17 @@ export class VideoSyncDetectorV2 {
         throw new Error('Microphone permission denied');
       }
 
-      // Configure audio mode for recording + playback
+      // Configure audio mode for recording (required by expo-av)
+      // Note: This may override native audio session settings, so we compensate
+      // by setting video player volume to maximum in the hook
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
         staysActiveInBackground: false,
+        interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        shouldDuckAndroid: false,
       });
-
-      // Small delay for audio mode to stabilize
-      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Create and start recording
       this.recording = new Audio.Recording();
@@ -716,15 +718,7 @@ export class VideoSyncDetectorV2 {
         this.recording = null;
       }
 
-      // Reset audio mode
-      try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-        });
-      } catch (error) {
-        console.warn('Error resetting audio mode:', error.message);
-      }
+      // NOTE: No need to reset audio mode - native session handles this
 
       const duration = (performance.now() - this.startTime) / 1000;
       console.log(`🛑 Detector stopped. Duration: ${duration.toFixed(1)}s, Hits: ${this.hitCount}`);

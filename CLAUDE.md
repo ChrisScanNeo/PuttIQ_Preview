@@ -1,7 +1,7 @@
 # PuttIQ2 - Putting Rhythm Trainer Development Guide
 
 ## 🚀 Current Progress Summary
-**Last Updated:** October 1, 2025
+**Last Updated:** October 8, 2025
 
 ### ✅ Completed Features:
 - **Project Setup** - Expo SDK 54 with React Native 0.81.4 configured for Codespaces
@@ -13,7 +13,7 @@
 - **Platform-Specific Video System** - .mov for iOS, .webm for Android (optimized per platform)
 - **Video-Based Timing System** - Transparent timing bar with 2-second gap between loops
 - **2-Second Gap Feature** - Professional pause between video cycles (client requirement)
-- **BPM Locked at 70** - Testing mode with locked BPM (controls disabled)
+- **BPM Management System** - Default 76 BPM, adjustable 70-80 BPM, synced across all modes
 - **Sound Type Selection** - Three sound types: Tone, Beat, Wind with custom icons
 - **Interactive Golf Ball** - Clickable golf ball with "START/STOP" text overlay
 - **Dynamic Video Loading** - Automatically loads correct video based on platform and sound type
@@ -68,7 +68,7 @@
   - Android: `/assets/swingBars/android/{soundType}/{SoundType}_{BPM}BPM.webm`
 - **Video Player:** expo-video with manual looping (2-second gap between cycles)
 - **Looping Behavior:** Video plays once, pauses 2 seconds, then restarts from frame 0
-- **BPM Range:** Currently locked at 70 BPM for testing (71-80 to be added)
+- **BPM Range:** 70-80 BPM, default 76 BPM, synced across all modes
 - **Platform Detection:** Automatically selects correct video format based on `Platform.OS`
 - **Video Container:** 40px height, white border, transparent background, 12px border radius
 - **Dynamic Loading:** Videos load based on platform, sound type, and BPM
@@ -78,6 +78,27 @@
 - **Database:** Firestore
 - **Offline Support:** Enabled with caching
 - **User Data:** Stored by device ID
+
+### BPM Management
+- **Default BPM:** 76 BPM for all new users
+- **BPM Range:** Adjustable from 70-80 BPM
+- **Sync Behavior:** When a user changes BPM in any mode (Tone, Beat, Wind, or Detect), it automatically saves to ALL modes
+- **Persistence:** BPM settings are saved to Firebase (when online) and AsyncStorage (offline cache)
+- **Implementation:**
+  - `services/auth.js` - `saveBpmPreference()` saves BPM to all modes simultaneously
+  - `screens/HomeScreen.js` - Local state updates all modes when user adjusts BPM
+- **User Experience:** User sets their preferred BPM once, and it applies everywhere
+- **Storage Structure:**
+  ```javascript
+  settings: {
+    bpmPreferences: {
+      tone: 76,
+      beat: 76,
+      wind: 76,
+      detect: 76
+    }
+  }
+  ```
 
 ### Development Environment
 - **Platform:** GitHub Codespaces / Windows
@@ -302,7 +323,7 @@ SoundLevel.onNewFrame = (data) => {
 
 #### Testing Checklist:
 - [ ] **Animation Testing:**
-  - [ ] Smooth metronome at all BPM ranges (60-100)
+  - [ ] Smooth metronome at all BPM ranges (70-80)
   - [ ] No frame drops or stuttering
   - [ ] Correct timing calculations
 
@@ -441,7 +462,7 @@ eas build --platform android
 - ✅ App launches in landscape mode with grass background
 - ✅ Video timing bars display at top of screen
 - ✅ Interactive golf ball with click to start/stop text
-- ✅ BPM control (70-80) with +/- buttons using custom icons
+- ✅ BPM control (70-80, default 76) with +/- buttons - synced across all modes
 - ✅ Sound type selection (Tone/Beat/Wind) with custom icons
 - ✅ Dynamic video loading based on BPM + sound type
 - ✅ Controls lock during playback (dimmed at 50% opacity)
@@ -452,7 +473,7 @@ eas build --platform android
 - ✅ Responsive layout with safe areas
 
 ### What's Not Yet Implemented:
-- ❌ Complete video library (only 70 BPM available for each type)
+- ❌ Complete video library (70-80 BPM available for all types on iOS, Android uses iOS .mov as fallback for 71-80)
 - ❌ Microphone hit detection
 - ❌ Timing accuracy feedback and scoring
 - ❌ In-app purchase unlock
@@ -464,7 +485,8 @@ eas build --platform android
 - **Git Workflow:** Commit and push changes after testing, include descriptive notes
 - **Testing:** Test on actual devices via custom dev client (Expo Go has limitations)
 - **Video Loading:** React Native requires static `require()` paths - update videoMap in HomeScreen.js when adding new videos
-- **BPM Range:** Currently fixed at 70-80 BPM (can be expanded later)
+- **BPM Range:** 70-80 BPM range, default 76 BPM, synced across all modes
+- **BPM Sync:** When user changes BPM, it saves to ALL modes (Tone, Beat, Wind, Detect)
 - **Performance:** Videos should be optimized for mobile playback (H.264 codec recommended)
 - **Landscape Mode:** All layouts optimized for landscape orientation for golf stance
 - **Safe Areas:** UI respects device safe areas (notches, home indicators)

@@ -217,6 +217,12 @@ export function useVideoSyncDetector(options = {}) {
       await detectorRef.current.start();
       setRunning(true);
 
+      // Set video player volume to maximum to compensate for iOS audio ducking
+      if (videoPlayer) {
+        videoPlayer.volume = 1.0;
+        console.log('🔊 Video player volume set to maximum (1.0)');
+      }
+
       // Start stats monitoring
       statsIntervalRef.current = setInterval(() => {
         if (detectorRef.current) {

@@ -5,8 +5,6 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { useVideoSyncDetector } from '../hooks/useVideoSyncDetector';
 import { loadBpmPreferences, saveBpmPreference } from '../services/auth';
 
-const { height: screenHeight } = Dimensions.get('window');
-
 // Dynamic sizing calculations
 const CONTROL_BARS_BOTTOM = 10; // Distance from screen bottom to control bars container
 const ICON_BAR_HEIGHT = 38.4; // Icon bar height (20% smaller)
@@ -22,11 +20,11 @@ const BALL_BOTTOM_GAP = 35; // Gap between ball and BPM bar top
 
 export default function HomeScreen({ user }) {
   const [soundType, setSoundType] = useState('tone'); // 'tone', 'beat', 'wind'
-  const [bpm, setBpm] = useState(70); // BPM range: 70-80
+  const [bpm, setBpm] = useState(76); // BPM range: 70-80
   const [isPlaying, setIsPlaying] = useState(false);
-  const [videoKey, setVideoKey] = useState('tone-70'); // Track video key for re-rendering
+  const [videoKey, setVideoKey] = useState('tone-76'); // Track video key for re-rendering
   const [restartTimeout, setRestartTimeout] = useState(null); // Track restart timer
-  const [bpmPreferences, setBpmPreferences] = useState({ tone: 70, beat: 70, wind: 70, detect: 70 }); // Store BPM for each type
+  const [bpmPreferences, setBpmPreferences] = useState({ tone: 76, beat: 76, wind: 76, detect: 76 }); // Store BPM for each type
 
   // Listen mode state
   const [listenMode, setListenMode] = useState(false);
@@ -375,13 +373,12 @@ export default function HomeScreen({ user }) {
     const subscription = player.addListener('playingChange', (event) => {
       // When video stops playing and we're at the end
       if (!event.isPlaying && isPlaying && player.currentTime >= player.duration - 0.1) {
-        // Clear hit feedback immediately when video ends (before 2-second gap)
-        setHitFeedback(null);
-        setHitPosition(null);
-
-        // Wait 2 seconds, then restart from beginning
+        // Wait 2 seconds, then clear feedback and restart from beginning
         const timeout = setTimeout(() => {
           if (isPlaying) {
+            // Clear hit feedback when new loop starts (after 2-second gap)
+            setHitFeedback(null);
+            setHitPosition(null);
             player.replay();
           }
         }, 2000);
@@ -433,6 +430,9 @@ export default function HomeScreen({ user }) {
   // Hit detection is now handled in the onHitDetected callback above
 
   const insets = useSafeAreaInsets();
+
+  // Get screen height dynamically (not at module level to avoid stale dimensions)
+  const screenHeight = Dimensions.get('window').height;
 
   // Calculate the actual position of the BPM bar top edge from screen bottom
   const bpmBarTopFromBottom = insets.bottom + CONTROL_BARS_BOTTOM + ICON_BAR_HEIGHT + BAR_GAP;
@@ -533,12 +533,12 @@ export default function HomeScreen({ user }) {
                     const newBpm = Math.max(70, bpm - 1);
                     setBpm(newBpm);
 
-                    // Save to Firebase/cache
+                    // Save to Firebase/cache (saves to ALL modes)
                     const typeToSave = listenMode ? 'detect' : soundType;
                     await saveBpmPreference(typeToSave, newBpm);
 
-                    // Update local state
-                    setBpmPreferences(prev => ({ ...prev, [typeToSave]: newBpm }));
+                    // Update local state - sync all modes
+                    setBpmPreferences({ tone: newBpm, beat: newBpm, wind: newBpm, detect: newBpm });
                   }
                 }}
               >
@@ -567,12 +567,12 @@ export default function HomeScreen({ user }) {
                     const newBpm = Math.min(80, bpm + 1);
                     setBpm(newBpm);
 
-                    // Save to Firebase/cache
+                    // Save to Firebase/cache (saves to ALL modes)
                     const typeToSave = listenMode ? 'detect' : soundType;
                     await saveBpmPreference(typeToSave, newBpm);
 
-                    // Update local state
-                    setBpmPreferences(prev => ({ ...prev, [typeToSave]: newBpm }));
+                    // Update local state - sync all modes
+                    setBpmPreferences({ tone: newBpm, beat: newBpm, wind: newBpm, detect: newBpm });
                   }
                 }}
               >
