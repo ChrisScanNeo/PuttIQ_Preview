@@ -1,3 +1,42 @@
+diff --git a/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift b/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
+index c38bc1b..9e70b6d 100644
+--- a/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
++++ b/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
+@@ -373,14 +373,22 @@ class AudioSessionManager {
+         
+         do {
+             let session = AVAudioSession.sharedInstance()
+-            Logger.debug("Debug: Configuring audio session with sample rate: \(settings.sampleRate) Hz")
++            Logger.debug("Debug: Configuring audio session with requested sample rate: \(settings.sampleRate) Hz")
+             
+             // Check if the input node supports the desired format
+             let inputNode = audioEngine.inputNode
+             let hardwareFormat = inputNode.inputFormat(forBus: 0)
+-            if hardwareFormat.sampleRate != newSettings.sampleRate {
+-                Logger.debug("Debug: Preferred sample rate not supported. Falling back to hardware sample rate \(session.sampleRate).")
+-                newSettings.sampleRate = session.sampleRate
++            Logger.debug("Debug: Hardware input format - sample rate: \(hardwareFormat.sampleRate) Hz, channels: \(hardwareFormat.channelCount)")
++            if hardwareFormat.sampleRate != newSettings.sampleRate {
++                Logger.debug("Debug: Preferred sample rate not supported. Falling back to hardware sample rate \(hardwareFormat.sampleRate).")
++                newSettings.sampleRate = hardwareFormat.sampleRate
++            }
++            if hardwareFormat.channelCount > 0 && UInt32(newSettings.numberOfChannels) != hardwareFormat.channelCount {
++                Logger.debug("Debug: Preferred channel count not supported. Falling back to hardware channel count \(hardwareFormat.channelCount).")
++                newSettings.numberOfChannels = Int(hardwareFormat.channelCount)
+             }
+             
+-            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+-            try session.setPreferredSampleRate(settings.sampleRate)
+-            try session.setPreferredIOBufferDuration(1024 / settings.sampleRate)
++            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
++            try session.setPreferredSampleRate(newSettings.sampleRate)
++            try session.setPreferredIOBufferDuration(1024 / newSettings.sampleRate)
+             try session.setActive(true)
+@@ -397,7 +405,7 @@ class AudioSessionManager {
+             Logger.debug("Debug: Audio session is successfully configured. Actual sample rate is \(actualSampleRate) Hz")
+              
+             recordingSettings = newSettings  // Update the class property with the new settings
+         } catch {
 diff --git a/node_modules/@cjblack/expo-audio-stream/ios/AudioUtils.swift b/node_modules/@cjblack/expo-audio-stream/ios/AudioUtils.swift
 index f9559a8..eee0178 100644
 --- a/node_modules/@cjblack/expo-audio-stream/ios/AudioUtils.swift
@@ -9,3 +48,16 @@ index f9559a8..eee0178 100644
  
  public enum SoundPlayerError: Error {
      case invalidBase64String
+diff --git a/node_modules/@cjblack/expo-audio-stream/ios/ExpoPlayAudioStreamModule.swift b/node_modules/@cjblack/expo-audio-stream/ios/ExpoPlayAudioStreamModule.swift
+index a3d0c7e..be63916 100644
+--- a/node_modules/@cjblack/expo-audio-stream/ios/ExpoPlayAudioStreamModule.swift
++++ b/node_modules/@cjblack/expo-audio-stream/ios/ExpoPlayAudioStreamModule.swift
+@@ -365,7 +365,7 @@ public class ExpoPlayAudioStreamModule: Module, AudioStreamManagerDelegate, Micr
+ 
+         let audioSession = AVAudioSession.sharedInstance()
+         try audioSession.setCategory(
+-            .playAndRecord, mode: .voiceChat,
++            .playAndRecord, mode: .default,
+             options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+         if let settings = recordingSettings {
+             try audioSession.setPreferredSampleRate(settings.sampleRate)

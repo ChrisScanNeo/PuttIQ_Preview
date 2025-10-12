@@ -53,6 +53,13 @@ export class PutterDetectorAcoustic {
       // Metronome rejection
       tickGuardMs: 50,          // Time window around metronome ticks to ignore (ms)
       getUpcomingTicks: () => [], // Function to get metronome tick times
+      getBpm: () => 30,         // Current metronome tempo (BPM)
+      getBeatCount: () => 0,    // Current beat count
+      minBeatCount: 0,          // Minimum beat count before arming detector
+      useListeningZone: false,  // Restrict detection to a portion of the beat
+      listeningZonePercent: 0.4,
+      listeningZoneOffset: 0.3,
+      baselineSettleMs: 100,    // Settling window after reset/start
 
       // Callbacks
       onStrike: () => {},       // Called when putter strike detected
@@ -96,6 +103,10 @@ export class PutterDetectorAcoustic {
 
     // Audio stream subscription
     this.subscription = null;
+    this.wasInZone = false;
+    this.detectingDisabledUntil = 0;
+    this.lastBaselineResetAt = 0;
+    this.lastGateReason = '';
   }
 
   /**
@@ -151,8 +162,8 @@ export class PutterDetectorAcoustic {
   processFrame(frame) {
     if (!this.isRunning) return;
 
-    const startTime = performance.now();
-    const now = performance.now();
+    const frameStart = performance.now();
+    const now = frameStart;
 
     // Apply filters
     const highFiltered = new Float32Array(frame.length);
@@ -170,8 +181,59 @@ export class PutterDetectorAcoustic {
     this.highBandEnvelope = smoothing * highRMS + (1 - smoothing) * this.highBandEnvelope;
     this.lowBandEnvelope = smoothing * lowRMS + (1 - smoothing) * this.lowBandEnvelope;
 
-    // Update adaptive thresholds
-    this.threshold.update(this.highBandEnvelope, this.lowBandEnvelope);
+    // Snapshot thresholds before update for spike clamping
+    const preHighThreshold = this.threshold.highBand.getThreshold();
+    const preLowThreshold = this.threshold.lowBand.getThreshold();
+    const preThresholdsReady = preHighThreshold !== Number.MAX_VALUE && preLowThreshold !== Number.MAX_VALUE;
+
+    // Update adaptive thresholds (freeze while an event is active)
+    if (!this.inEvent) {
+      const limitedHigh = preThresholdsReady ? Math.min(this.highBandEnvelope, preHighThreshold) : this.highBandEnvelope;
+      const limitedLow = preThresholdsReady ? Math.min(this.lowBandEnvelope, preLowThreshold) : this.lowBandEnvelope;
+      this.threshold.update(limitedHigh, limitedLow);
+    }
+
+    const highThreshold = this.threshold.highBand.getThreshold();
+    const lowThreshold = this.threshold.lowBand.getThreshold();
+    const thresholdsReady = highThreshold !== Number.MAX_VALUE && lowThreshold !== Number.MAX_VALUE;
+
+    // Listening zone gating
+    const zoneStatus = this.getListeningZoneStatus(now);
+    if (this.opts.useListeningZone) {
+      if (zoneStatus.inZone && !this.wasInZone && this.opts.debugMode) {
+        console.log(`✅ ENTERED listening zone at ${(zoneStatus.positionInBeat * 100).toFixed(0)}% of beat`);
+      } else if (!zoneStatus.inZone && this.wasInZone && this.opts.debugMode) {
+        console.log(`❌ EXITED listening zone at ${(zoneStatus.positionInBeat * 100).toFixed(0)}% of beat`);
+      } else if (!zoneStatus.inZone && this.opts.debugMode && this.frameCount % 100 === 0) {
+        console.log(`⏳ Waiting for zone: ${zoneStatus.reason}`);
+      }
+    }
+    this.wasInZone = zoneStatus.inZone;
+
+    const gate = this.getDetectionGate(now, zoneStatus);
+
+    const gateReasonChanged = gate.reason !== this.lastGateReason;
+    if (!gate.canDetect) {
+      if (this.opts.debugMode && gate.reason && (gateReasonChanged || this.frameCount % 50 === 0)) {
+        console.log(`⏳ Detection paused: ${gate.reason}`);
+      }
+
+      this.lastGateReason = gate.reason;
+
+      if (!this.inEvent) {
+        // No active event: skip detection for this frame
+        this.prevHighEnvelope = this.highBandEnvelope;
+        this.prevLowEnvelope = this.lowBandEnvelope;
+        this.frameCount++;
+        this.processingTimeTotal += performance.now() - frameStart;
+        return;
+      }
+    } else if (this.lastGateReason && gate.canDetect) {
+      if (this.opts.debugMode) {
+        console.log('✅ Detection re-enabled');
+      }
+      this.lastGateReason = '';
+    }
 
     // Detect onset (sharp rise in high-band energy)
     const highDelta = this.highBandEnvelope - this.prevHighEnvelope;
@@ -179,7 +241,7 @@ export class PutterDetectorAcoustic {
     const riseRate = highDelta / frameTimeMs; // Change per ms
 
     // Check for event start (onset)
-    if (!this.inEvent && this.threshold.highBandAboveThreshold(this.highBandEnvelope)) {
+    if (!this.inEvent && gate.canDetect && thresholdsReady && this.highBandEnvelope > highThreshold) {
       // Sharp onset detected
       const onsetTime = riseRate * this.opts.onsetTimeMs;
 
@@ -205,7 +267,10 @@ export class PutterDetectorAcoustic {
       const eventDuration = now - this.eventStartTime;
 
       // Check for event end (energy drops below threshold)
-      const eventEnded = this.highBandEnvelope < this.threshold.highBand.getThreshold() * 0.5;
+      const currentHighThreshold = this.threshold.highBand.getThreshold();
+      const eventEnded = currentHighThreshold !== Number.MAX_VALUE
+        ? this.highBandEnvelope < currentHighThreshold * 0.5
+        : false;
       const maxDurationReached = eventDuration > this.opts.maxDurationMs;
 
       if (eventEnded || maxDurationReached) {
@@ -226,12 +291,16 @@ export class PutterDetectorAcoustic {
 
     // Update frame count and timing
     this.frameCount++;
-    this.processingTimeTotal += performance.now() - startTime;
+    this.processingTimeTotal += performance.now() - frameStart;
 
     // Periodic stats logging (every 2 seconds)
     if (this.opts.debugMode && (!this.lastStatsTime || now - this.lastStatsTime > 2000)) {
-      const uptime = ((now - (this.lastStatsTime || now)) / 1000).toFixed(1);
-      console.log(`📊 [${uptime}s] Frames: ${this.frameCount}, High: ${this.highBandEnvelope.toFixed(6)}, Low: ${this.lowBandEnvelope.toFixed(6)}, Thresh: ${this.threshold.highBand.getThreshold().toFixed(6)}/${this.threshold.lowBand.getThreshold().toFixed(6)}`);
+      const uptime = ((now - (this.lastBaselineResetAt || now)) / 1000).toFixed(1);
+      const hiThreshLog = this.threshold.highBand.getThreshold();
+      const lowThreshLog = this.threshold.lowBand.getThreshold();
+      const hiDisplay = hiThreshLog !== Number.MAX_VALUE ? hiThreshLog.toFixed(6) : '∞';
+      const lowDisplay = lowThreshLog !== Number.MAX_VALUE ? lowThreshLog.toFixed(6) : '∞';
+      console.log(`📊 [${uptime}s] Frames: ${this.frameCount}, High: ${this.highBandEnvelope.toFixed(6)}, Low: ${this.lowBandEnvelope.toFixed(6)}, Thresh: ${hiDisplay}/${lowDisplay}`);
       this.lastStatsTime = now;
     }
   }
@@ -410,6 +479,105 @@ export class PutterDetectorAcoustic {
   }
 
   /**
+   * Determine if the current timestamp falls within the listening zone window
+   * @param {number} timestamp - Timestamp to evaluate
+   * @returns {Object} Zone information
+   */
+  getListeningZoneStatus(timestamp) {
+    if (!this.opts.useListeningZone) {
+      return { inZone: true, reason: 'Zone disabled' };
+    }
+
+    const bpm = typeof this.opts.getBpm === 'function' ? this.opts.getBpm() : 0;
+    if (!bpm || bpm <= 0) {
+      return { inZone: true, reason: 'No BPM available' };
+    }
+
+    const ticks = typeof this.opts.getUpcomingTicks === 'function'
+      ? this.opts.getUpcomingTicks()
+      : [];
+
+    if (!ticks || ticks.length === 0) {
+      return { inZone: true, reason: 'No ticks available' };
+    }
+
+    const period = 60000 / bpm;
+    let lastTick = null;
+    let nextTick = null;
+
+    for (let i = 0; i < ticks.length; i++) {
+      if (ticks[i] <= timestamp) {
+        lastTick = ticks[i];
+      } else {
+        nextTick = ticks[i];
+        break;
+      }
+    }
+
+    if (lastTick === null && nextTick !== null) {
+      lastTick = nextTick - period;
+    }
+
+    if (lastTick === null) {
+      return { inZone: true, reason: 'Cannot determine position' };
+    }
+
+    const offset = ((timestamp - lastTick) % period + period) % period;
+    const positionInBeat = offset / period;
+    const zoneStart = Math.max(0, Math.min(1, this.opts.listeningZoneOffset));
+    const zonePercent = Math.max(0, Math.min(1, this.opts.listeningZonePercent));
+    const zoneEnd = Math.min(1, zoneStart + zonePercent);
+    const inZone = positionInBeat >= zoneStart && positionInBeat <= zoneEnd;
+
+    return {
+      inZone,
+      positionInBeat,
+      zoneStart,
+      zoneEnd,
+      reason: inZone
+        ? `In zone (${(positionInBeat * 100).toFixed(0)}% of beat)`
+        : `Outside zone (${(positionInBeat * 100).toFixed(0)}% of beat)`
+    };
+  }
+
+  /**
+   * Aggregate gating conditions (baseline settle, beat count, listening zone)
+   * @param {number} timestamp - Current timestamp
+   * @param {Object} zoneStatus - Listening zone status
+   * @returns {{canDetect: boolean, reason: string}}
+   */
+  getDetectionGate(timestamp, zoneStatus) {
+    const reasons = [];
+
+    if (timestamp < this.detectingDisabledUntil) {
+      const remain = Math.max(0, Math.round(this.detectingDisabledUntil - timestamp));
+      reasons.push(`Baseline settling (${remain}ms)`);
+    }
+
+    if (this.opts.minBeatCount > 0 && typeof this.opts.getBeatCount === 'function') {
+      try {
+        const beatCount = Number(this.opts.getBeatCount()) || 0;
+        if (beatCount < this.opts.minBeatCount) {
+          reasons.push(`Waiting for beat ${beatCount}/${this.opts.minBeatCount}`);
+        }
+      } catch (error) {
+        if (this.opts.debugMode) {
+          console.log('⚠️ Failed to read beat count:', error.message);
+        }
+      }
+    }
+
+    if (this.opts.useListeningZone && !zoneStatus.inZone) {
+      reasons.push(zoneStatus.reason);
+    }
+
+    return {
+      canDetect: reasons.length === 0,
+      reason: reasons.join(' | ')
+    };
+  }
+
+  /**
    * Start the detector
    */
   async start() {
@@ -424,6 +592,14 @@ export class PutterDetectorAcoustic {
     this.lastStrikeAt = 0;
     this.lastStatsTime = 0;
     this.threshold.reset();
+    const now = performance.now();
+    this.detectingDisabledUntil = now + (this.opts.baselineSettleMs || 0);
+    this.lastBaselineResetAt = now;
+    this.wasInZone = false;
+    this.inEvent = false;
+    this.eventStartTime = null;
+    this.eventPeakHigh = 0;
+    this.eventPeakLow = 0;
 
     console.log('🎯 Acoustic detector starting...', {
       sampleRate: this.opts.sampleRate + 'Hz',
@@ -490,6 +666,15 @@ export class PutterDetectorAcoustic {
     if (params.lowBandMultiplier !== undefined) {
       this.threshold.lowBand.setMultiplier(params.lowBandMultiplier);
     }
+    if (params.baselineSettleMs !== undefined) {
+      this.detectingDisabledUntil = performance.now() + (this.opts.baselineSettleMs || 0);
+    }
+    if (params.useListeningZone !== undefined && !params.useListeningZone) {
+      this.wasInZone = false;
+    }
+    if (params.minBeatCount !== undefined) {
+      this.lastGateReason = '';
+    }
   }
 
   /**
@@ -536,6 +721,13 @@ export class PutterDetectorAcoustic {
     this.prevLowEnvelope = 0;
     this.inEvent = false;
     this.eventStartTime = null;
+    this.eventPeakHigh = 0;
+    this.eventPeakLow = 0;
+    this.wasInZone = false;
+    this.lastGateReason = '';
+    const now = performance.now();
+    this.detectingDisabledUntil = now + (this.opts.baselineSettleMs || 0);
+    this.lastBaselineResetAt = now;
 
     console.log('🔄 Acoustic detector reset');
   }

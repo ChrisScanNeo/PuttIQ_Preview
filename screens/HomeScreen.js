@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ImageBackground, Image, Dimensions, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, ImageBackground, Image, Dimensions, Platform, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
+import { Asset } from 'expo-asset';
 import { useVideoSyncDetector } from '../hooks/useVideoSyncDetector';
 import { loadBpmPreferences, saveBpmPreference } from '../services/auth';
 
@@ -16,15 +17,16 @@ const VIDEO_BORDER = 0; // No border for transparent videos
 const BALL_TOP_GAP = 0; // Gap between video bar and ball (ball image has built-in padding)
 const BALL_BOTTOM_GAP = 35; // Gap between ball and BPM bar top
 
+const INFO_DOCUMENT = require('../Documents/UI/Info.md');
 
-
-export default function HomeScreen({ user }) {
+export default function HomeScreen({ user, onReady = () => {} }) {
   const [soundType, setSoundType] = useState('tone'); // 'tone', 'beat', 'wind'
   const [bpm, setBpm] = useState(76); // BPM range: 70-80
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoKey, setVideoKey] = useState('tone-76'); // Track video key for re-rendering
   const [restartTimeout, setRestartTimeout] = useState(null); // Track restart timer
   const [bpmPreferences, setBpmPreferences] = useState({ tone: 76, beat: 76, wind: 76, detect: 76 }); // Store BPM for each type
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
   // Listen mode state
   const [listenMode, setListenMode] = useState(false);
@@ -36,6 +38,12 @@ export default function HomeScreen({ user }) {
   const [videoLoading, setVideoLoading] = useState(true); // True when video is loading
   const [videoReady, setVideoReady] = useState(false); // True when video is ready to play
   const [videoError, setVideoError] = useState(null); // Error message if video fails to load
+
+  const [infoVisible, setInfoVisible] = useState(false);
+  const [infoContent, setInfoContent] = useState('');
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [infoError, setInfoError] = useState(null);
+  const hasSignalledReadyRef = useRef(false);
 
   // Get hit color based on millisecond error from 4th beat (target at 100%)
   const getHitColor = (accuracy, errorMs, position) => {
@@ -196,10 +204,17 @@ export default function HomeScreen({ user }) {
   // Load BPM preferences on mount
   useEffect(() => {
     const initializeBpmPreferences = async () => {
-      const preferences = await loadBpmPreferences();
-      setBpmPreferences(preferences);
-      // Set initial BPM to tone preference
-      setBpm(preferences.tone);
+      try {
+        const preferences = await loadBpmPreferences();
+        if (preferences) {
+          setBpmPreferences(preferences);
+          setBpm(preferences.tone);
+        }
+      } catch (prefError) {
+        console.warn('Failed to load BPM preferences, using defaults:', prefError);
+      } finally {
+        setPreferencesLoaded(true);
+      }
     };
 
     initializeBpmPreferences();
@@ -321,11 +336,27 @@ export default function HomeScreen({ user }) {
     return () => subscription.remove();
   }, [player, videoKey]);
 
+  useEffect(() => {
+    if (!hasSignalledReadyRef.current && preferencesLoaded && (videoReady || videoError)) {
+      hasSignalledReadyRef.current = true;
+      onReady();
+    }
+  }, [preferencesLoaded, videoReady, videoError, onReady]);
+
   // Initialize VideoSyncDetector with video player reference
   const detector = useVideoSyncDetector({
     bpm,
     videoPlayer: player,
-    debugMode: false, // Set to true for debug logging
+    debugMode: true, // Enable verbose logging for diagnostics
+    listenDelayMs: 380,
+    micGain: 3.0,
+    spikeHoldFrames: 2,
+    energyThreshold: 1.2,
+    singleFrameBypassRatio: 2.2,
+    listeningTailMs: 240,
+    hitProcessingDelayMs: 0,
+    audioLatencyMs: 180,
+    listeningEntryGuardMs: 100,
     onAudioLevel: (audioData) => {
       // Update live audio display every frame
       setLiveAudioLevel(audioData);
@@ -449,7 +480,30 @@ export default function HomeScreen({ user }) {
   // Position ball: bottom offset = distance to BPM bar top + gap
   const ballBottomOffset = bpmBarTopFromBottom + BALL_BOTTOM_GAP;
 
+  const loadInfoDocument = async () => {
+    if (infoContent || infoLoading) {
+      return;
+    }
 
+    try {
+      setInfoLoading(true);
+      setInfoError(null);
+
+      const asset = Asset.fromModule(INFO_DOCUMENT);
+      if (!asset.downloaded) {
+        await asset.downloadAsync();
+      }
+
+      const response = await fetch(asset.localUri ?? asset.uri);
+      const text = await response.text();
+      setInfoContent(text);
+    } catch (err) {
+      console.error('Failed to load info document:', err);
+      setInfoError('Unable to load the information guide. Please try again.');
+    } finally {
+      setInfoLoading(false);
+    }
+  };
 
   return (
     <ImageBackground
@@ -587,7 +641,10 @@ export default function HomeScreen({ user }) {
             {/* Sound Type Bar - Bottom */}
             <View style={styles.iconBar}>
               <TouchableOpacity
-                style={[styles.barSection, soundType === 'tone' && styles.selectedSection]}
+            style={[
+              styles.barSection,
+              soundType === 'tone' ? styles.selectedSection : null
+            ]}
                 onPress={() => {
                   if (listenMode) return; // Disabled in listen mode
                   if (isPlaying) {
@@ -600,7 +657,13 @@ export default function HomeScreen({ user }) {
               >
                 <Image
                   source={require('../assets/icons/musical-note.png')}
-                  style={[styles.iconImage, listenMode && { opacity: 0.5 }]}
+                  style={[
+                    styles.iconImage,
+                    listenMode
+                      ? styles.iconInactive
+                      : (soundType === 'tone' ? styles.iconActive : styles.iconInactive),
+                    listenMode && styles.iconDisabled
+                  ]}
                   resizeMode="contain"
                 />
               </TouchableOpacity>
@@ -608,7 +671,10 @@ export default function HomeScreen({ user }) {
               <View style={styles.verticalDivider} />
 
               <TouchableOpacity
-                style={[styles.barSection, soundType === 'beat' && styles.selectedSection]}
+            style={[
+              styles.barSection,
+              soundType === 'beat' ? styles.selectedSection : null
+            ]}
                 onPress={() => {
                   if (listenMode) return; // Disabled in listen mode
                   if (isPlaying) {
@@ -621,7 +687,13 @@ export default function HomeScreen({ user }) {
               >
                 <Image
                   source={require('../assets/icons/metronome.png')}
-                  style={[styles.iconImage, listenMode && { opacity: 0.5 }]}
+                  style={[
+                    styles.iconImage,
+                    listenMode
+                      ? styles.iconInactive
+                      : (soundType === 'beat' ? styles.iconActive : styles.iconInactive),
+                    listenMode && styles.iconDisabled
+                  ]}
                   resizeMode="contain"
                 />
               </TouchableOpacity>
@@ -629,7 +701,10 @@ export default function HomeScreen({ user }) {
               <View style={styles.verticalDivider} />
 
               <TouchableOpacity
-                style={[styles.barSection, soundType === 'wind' && styles.selectedSection]}
+            style={[
+              styles.barSection,
+              soundType === 'wind' ? styles.selectedSection : null
+            ]}
                 onPress={() => {
                   if (listenMode) return; // Disabled in listen mode
                   if (isPlaying) {
@@ -642,12 +717,34 @@ export default function HomeScreen({ user }) {
               >
                 <Image
                   source={require('../assets/icons/wind.png')}
-                  style={[styles.iconImage, listenMode && { opacity: 0.5 }]}
+                  style={[
+                    styles.iconImage,
+                    listenMode
+                      ? styles.iconInactive
+                      : (soundType === 'wind' ? styles.iconActive : styles.iconInactive),
+                    listenMode && styles.iconDisabled
+                  ]}
                   resizeMode="contain"
                 />
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Info Modal Button - Bottom Right */}
+          <TouchableOpacity
+            style={styles.infoButton}
+            onPress={() => {
+              setInfoVisible(true);
+              loadInfoDocument();
+            }}
+            activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel="Open information guide"
+          >
+            <View style={styles.infoButtonCircle}>
+              <Text style={styles.infoButtonLabel}>i</Text>
+            </View>
+          </TouchableOpacity>
 
           {/* Listen Mode Toggle Button - Bottom Left */}
           <TouchableOpacity
@@ -677,6 +774,57 @@ export default function HomeScreen({ user }) {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      <Modal
+        visible={infoVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setInfoVisible(false)}
+        supportedOrientations={['landscape-left', 'landscape-right']}
+      >
+        <View style={styles.infoModalOverlay}>
+          <TouchableOpacity
+            style={styles.infoModalBackdrop}
+            onPress={() => setInfoVisible(false)}
+            activeOpacity={1}
+          />
+          <View style={styles.infoModalContent}>
+            <View style={styles.infoModalHeader}>
+              <Text style={styles.infoModalTitle}>Information</Text>
+              <TouchableOpacity
+                style={styles.infoModalClose}
+                onPress={() => setInfoVisible(false)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.infoModalCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.infoModalBody}>
+              {infoLoading ? (
+                <ActivityIndicator size="large" color="#333" />
+              ) : infoError ? (
+                <View style={styles.infoErrorContainer}>
+                  <Text style={styles.infoErrorText}>{infoError}</Text>
+                  <TouchableOpacity
+                    style={styles.infoRetryButton}
+                    onPress={loadInfoDocument}
+                  >
+                    <Text style={styles.infoRetryText}>Tap to retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <ScrollView
+                  style={styles.infoScrollView}
+                  contentContainerStyle={styles.infoScrollContent}
+                  showsVerticalScrollIndicator
+                >
+                  <Text style={styles.infoText}>{infoContent}</Text>
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 }
@@ -802,6 +950,17 @@ const styles = StyleSheet.create({
     width: 19.2,
     height: 19.2,
   },
+  iconActive: {
+    tintColor: '#2e7d32',
+    opacity: 1,
+  },
+  iconInactive: {
+    tintColor: '#333',
+    opacity: 0.35,
+  },
+  iconDisabled: {
+    opacity: 0.2,
+  },
   disabledBar: {
     opacity: 0.5,
   },
@@ -888,5 +1047,120 @@ const styles = StyleSheet.create({
     color: '#FF9500',
     fontSize: 12,
     marginTop: 5,
+  },
+  infoButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    zIndex: 10,
+  },
+  infoButtonCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  infoButtonLabel: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#333',
+  },
+  infoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  infoModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  infoModalContent: {
+    width: '75%',
+    maxWidth: 640,
+    marginVertical: 20,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  infoModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#333',
+  },
+  infoModalClose: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+  },
+  infoModalCloseText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  infoModalBody: {
+    maxHeight: 420,
+    paddingVertical: 10,
+  },
+  infoScrollView: {
+    borderRadius: 12,
+  },
+  infoScrollContent: {
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+  infoText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: '#222',
+  },
+  infoErrorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  infoErrorText: {
+    fontSize: 16,
+    color: '#B00020',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  infoRetryButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#333',
+  },
+  infoRetryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

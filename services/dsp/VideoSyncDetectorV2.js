@@ -14,6 +14,15 @@
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import { Platform } from 'react-native';
 
+let ExpoPlayAudioStream = null;
+try {
+  const audioStreamModule = require('@cjblack/expo-audio-stream');
+  ExpoPlayAudioStream = audioStreamModule?.ExpoPlayAudioStream ?? null;
+} catch (error) {
+  // Module not available (likely running in Expo Go); fall back to expo-av
+  ExpoPlayAudioStream = null;
+}
+
 export class VideoSyncDetectorV2 {
   constructor(options = {}) {
     // Configuration
@@ -24,25 +33,40 @@ export class VideoSyncDetectorV2 {
       beatsInVideo: 4,                  // Number of beats in video (default 4)
 
       // Detection parameters
-      energyThreshold: 1.5,             // Multiplier above baseline for detection (lowered for weak putter hits)
-      baselineWindow: 50,               // Frames to average for baseline
+      energyThreshold: 1.3,             // Multiplier above baseline for detection (lowered for weak putter hits)
+      baselineWindow: 80,               // Frames to average for baseline
+      baselineSettleMs: 100,            // Guard period after baseline reset
       debounceMs: 200,                  // Minimum time between detections
 
       // Timing parameters
       targetPosition: null,             // Target position for perfect hit (null = auto-calculate as 87.5%)
-      audioLatencyMs: 0,                // Audio processing latency compensation (disabled by default)
-      listenDelayMs: 500,               // Delay after Beat 3 before listening starts (to avoid detecting Beat 3 tone)
+      listenDelayMs: 300,               // Delay after Beat 3 before listening starts (to avoid detecting Beat 3 tone)
       hitProcessingDelayMs: 50,         // Delay before processing hit (allows for accurate capture without affecting timing)
+      audioLatencyMs: 350,           // Override temporal offset (defaults to hitProcessingDelayMs)
+      micGain: 3.,                     // Software gain applied to microphone input before detection
+      spikeHoldFrames: 1,               // Require N consecutive frames above threshold before counting a hit
+      fastStrikeRatio: 4.0,             // Bypass hold requirement for very strong impacts
+      singleFrameBypassRatio: 1.0,     // Allow single-frame detections when ratio exceeds this multiplier
+      listeningTailMs: 200,             // Keep window open after closure to absorb audio latency
+      listeningEntryGuardMs: 0,         // Ignore detections for N ms after window opens
 
       // Callbacks
       onHitDetected: () => {},          // Called when hit detected
       onAudioLevel: () => {},           // Called every 100ms with current audio level
 
       // Debug
-      debugMode: false,
+      debugMode: true,
 
       ...options
     };
+
+    // Prefer native audio stream module when available (iOS custom build)
+    this.audioStreamModule = ExpoPlayAudioStream;
+    this.useAudioStream =
+      Platform.OS === 'ios' &&
+      !!(this.audioStreamModule && typeof this.audioStreamModule.startRecording === 'function');
+    this.audioStreamSubscription = null;
+    this.isAudioStreamActive = false;
 
     // State
     this.isRunning = false;
@@ -57,6 +81,35 @@ export class VideoSyncDetectorV2 {
     this.hitCount = 0;
     this.spikeCount = 0;              // Track ALL spikes over 4x (for debugging)
     this.lastSpikeAt = 0;             // Debounce spikes
+    this.consecutiveSpikeFrames = 0;  // Track consecutive frames above threshold while listening
+
+    // Normalize configurable thresholds
+    this.opts.spikeHoldFrames = Math.max(1, Math.floor(this.opts.spikeHoldFrames || 1));
+    const bypassRatioValue = Number(this.opts.singleFrameBypassRatio);
+    this.opts.singleFrameBypassRatio = Number.isFinite(bypassRatioValue)
+      ? Math.max(1.2, bypassRatioValue)
+      : 1.9;
+    const hitDelayValue = Number(this.opts.hitProcessingDelayMs);
+    this.opts.hitProcessingDelayMs = Number.isFinite(hitDelayValue)
+      ? Math.max(0, hitDelayValue)
+      : 0;
+    const audioLatencyValue = Number(this.opts.audioLatencyMs);
+    this.opts.audioLatencyMs = Number.isFinite(audioLatencyValue)
+      ? Math.max(0, audioLatencyValue)
+      : this.opts.hitProcessingDelayMs;
+    const tailValue = Number(this.opts.listeningTailMs);
+    if (Number.isFinite(tailValue)) {
+      this.opts.listeningTailMs = Math.max(0, tailValue);
+    } else {
+      const latencyFallback = this.opts.audioLatencyMs;
+      this.opts.listeningTailMs = latencyFallback > 0
+        ? Math.max(0, latencyFallback)
+        : 0;
+    }
+    const entryGuardValue = Number(this.opts.listeningEntryGuardMs);
+    this.opts.listeningEntryGuardMs = Number.isFinite(entryGuardValue)
+      ? Math.max(0, entryGuardValue)
+      : 0;
 
     // Performance tracking
     this.frameCount = 0;
@@ -75,8 +128,16 @@ export class VideoSyncDetectorV2 {
     // Hit timestamp buffer (for accurate position reconstruction)
     this.pendingHits = [];              // Array of {timestamp, videoPosition, audioLevel, etc.}
 
+    // Noise-floor settling guard
+    this.baselineSettleUntil = 0;
+    this.listeningGraceUntil = 0;
+    this.listeningStartedAt = 0;
+
     // Audio monitoring
     this.monitoringInterval = null;
+
+    // Bind handlers for native audio stream callbacks
+    this.handleAudioStreamData = this.handleAudioStreamData.bind(this);
   }
 
   /**
@@ -91,12 +152,24 @@ export class VideoSyncDetectorV2 {
     // Calculate video duration
     const videoDuration = beatDurationMs * this.opts.beatsInVideo;  // e.g., 3,428ms at 70 BPM
 
-    // Proportional delay after Beat 3 to avoid detecting the tone
-    // Uses 0.583 of beat duration (scales with BPM for consistent timing)
-    const listenDelayPercent = 0.583;
-    const listenDelayMs = beatDurationMs * listenDelayPercent;
-    const listenDelayAsVideoPercent = listenDelayMs / videoDuration;
-    const listenStartPercent = beat3Position + listenDelayAsVideoPercent;
+    // Fixed delay after Beat 3 to avoid detecting the tone (configurable via listenDelayMs)
+    const configuredDelayMs = typeof this.opts.listenDelayMs === 'number'
+      ? this.opts.listenDelayMs
+      : 540;
+
+    // Ensure we stay before Beat 4 with a small safety buffer
+    const timeBetweenBeat3And4 = (beat4Position - beat3Position) * videoDuration;
+    const safetyBufferMs = 10;
+    const maxDelayBeforeBeat4 = Math.max(0, timeBetweenBeat3And4 - safetyBufferMs);
+    const listenDelayMs = Math.max(0, Math.min(configuredDelayMs, maxDelayBeforeBeat4));
+
+    const listenDelayAsVideoPercent = videoDuration > 0 ? (listenDelayMs / videoDuration) : 0;
+    const rawStartPercent = beat3Position + listenDelayAsVideoPercent;
+    const maxStartPercent = beat4Position - (safetyBufferMs / Math.max(videoDuration, 1));
+    const listenStartPercent = Math.max(
+      beat3Position,
+      Math.min(maxStartPercent, rawStartPercent)
+    );
 
     return {
       beatDurationMs,
@@ -104,8 +177,8 @@ export class VideoSyncDetectorV2 {
       videoDuration,            // Total video duration in ms
       beat3Position,            // 0.50
       beat4Position,            // 0.75
-      listenDelayMs,            // Calculated proportionally (e.g., 500ms at 70 BPM)
-      listenStartPercent,       // ~0.646 (64.6%) at all BPMs
+      listenDelayMs,            // Effective delay (default 540ms) after Beat 3, clamped before Beat 4
+      listenStartPercent,       // Listening window start percent (~62-63% with default delay)
       listenEndPercent: 1.0     // Listen until end of video (100%)
     };
   }
@@ -130,16 +203,21 @@ export class VideoSyncDetectorV2 {
   /**
    * Reset baseline (called at start of each loop)
    */
-  resetBaseline() {
+  resetBaseline(reason = 'resetBaseline') {
     this.baselineFrames = [];
     this.baselineEnergy = 0.005;      // Reset to minimum baseline (not 0)
     this.isInGap = false;
     this.videoWasPlaying = false;
     this.hitDetectedThisLoop = false;  // Reset hit flag for new loop
     this.isFirstLoop = true;           // Allow baseline building in next loop
+    this.consecutiveSpikeFrames = 0;
+    this.pendingHits = [];
+    this.listeningGraceUntil = 0;
+    this.listeningStartedAt = 0;
+    this.scheduleBaselineSettle(reason);
 
     if (this.opts.debugMode) {
-      console.log('🔄 Baseline reset for new loop');
+      console.log(`🔄 Baseline reset (${reason})`);
     }
   }
 
@@ -201,7 +279,11 @@ export class VideoSyncDetectorV2 {
 
     // Error in milliseconds (negative = early, positive = late)
     const videoDuration = this.opts.videoPlayer?.duration || 0;
-    const errorMs = (hitPosition - targetPosition) * videoDuration * 1000;
+    const videoDurationMs = videoDuration * 1000;
+    const latencyMs = this.opts.audioLatencyMs || 0;
+    const latencyFraction = videoDurationMs > 0 ? latencyMs / videoDurationMs : 0;
+    const adjustedPosition = Math.max(0, Math.min(1, hitPosition - latencyFraction));
+    const errorMs = (adjustedPosition - targetPosition) * videoDurationMs;
 
     // Accuracy based on absolute error in milliseconds
     // Perfect = within 50ms, good = within 200ms
@@ -223,13 +305,13 @@ export class VideoSyncDetectorV2 {
       const listenStart = beatTiming.listenStartPercent ?? 0.5; // ~0.529 at 70 BPM
       const b4 = beatTiming.beat4Position ?? 0.75;
       const end = 1.0;
-      if (hitPosition <= b4) {
+      if (adjustedPosition <= b4) {
         // Early region: map [listenStart..b4] -> [1.0..0.5]
-        const t = Math.max(0, Math.min(1, (hitPosition - listenStart) / Math.max(1e-6, (b4 - listenStart))));
+        const t = Math.max(0, Math.min(1, (adjustedPosition - listenStart) / Math.max(1e-6, (b4 - listenStart))));
         displayPosition = 1.0 - 0.5 * t;
       } else {
         // Late region: map [b4..end] -> [0.5..0.0]
-        const t = Math.max(0, Math.min(1, (hitPosition - b4) / Math.max(1e-6, (end - b4))));
+        const t = Math.max(0, Math.min(1, (adjustedPosition - b4) / Math.max(1e-6, (end - b4))));
         displayPosition = 0.5 * (1 - t);
       }
     } catch (e) {
@@ -238,6 +320,7 @@ export class VideoSyncDetectorV2 {
 
     return {
       position: hitPosition,
+      adjustedPosition,
       displayPosition,
       targetPosition,
       errorMs,
@@ -259,16 +342,193 @@ export class VideoSyncDetectorV2 {
       if (this.opts.debugMode) {
         console.log('🔁 Loop detected! Resetting baseline...');
       }
-      this.resetBaseline();
+      this.resetBaseline('loop-detected');
     }
 
     this.lastVideoPosition = currentPosition;
   }
 
   /**
+   * Handle a metering sample (linear volume) and perform detection logic
+   * @param {number} meteringLinear - Linear audio level (0-1)
+   * @param {number} sampleTimestamp - Timestamp associated with the sample
+   */
+  handleMeteringSample(meteringLinear, sampleTimestamp = performance.now()) {
+    if (!this.isRunning || this.isPaused) {
+      return;
+    }
+
+    // Update baseline during 2-second gap OR during first loop (before any gap has occurred)
+    // After first gap, lock to gap-only updates to prevent video audio pollution
+    if (this.isInGap || this.isFirstLoop) {
+      this.updateBaseline(meteringLinear);
+    }
+
+    const gainMultiplier = Math.max(0.1, this.opts.micGain ?? 1);
+    const adjustedLevel = Math.min(1, meteringLinear * gainMultiplier);
+
+    // Check for energy spike above threshold
+    const baseThreshold = this.baselineEnergy * this.opts.energyThreshold;
+    const threshold = Math.min(Math.max(0.01, baseThreshold), 0.5);
+    const isSpike = adjustedLevel > threshold;
+
+    // Track spikes over 4x for debugging (helps identify putter hits)
+    const ratio = adjustedLevel / (this.baselineEnergy + 0.0001);
+    const fastStrikeRatio = Math.max(1.5, this.opts.fastStrikeRatio || 0);
+    const isFastStrike = ratio >= fastStrikeRatio;
+    const is4xSpike = ratio >= 4.0;
+    const timeSinceLastSpike = sampleTimestamp - this.lastSpikeAt;
+    let currentSpikeNumber = null;
+    const isSettling = this.isSettling(sampleTimestamp);
+
+    if (is4xSpike && timeSinceLastSpike > 100) {  // Debounce spikes by 100ms
+      this.spikeCount++;
+      this.lastSpikeAt = sampleTimestamp;
+      currentSpikeNumber = this.spikeCount;
+
+      if (this.opts.debugMode) {
+        console.log(`🔥 SPIKE #${this.spikeCount}: ${ratio.toFixed(1)}x at ${(this.getVideoPosition() * 100).toFixed(1)}%`);
+      }
+    }
+
+    const graceActive = this.listeningGraceUntil > 0 && sampleTimestamp <= this.listeningGraceUntil;
+    const listeningWindowActive = (this.isListening || graceActive) && !this.hitDetectedThisLoop;
+    const entryGuardMs = Math.max(0, this.opts.listeningEntryGuardMs || 0);
+    const entryGuardActive = entryGuardMs > 0 && this.listeningStartedAt > 0 && (sampleTimestamp - this.listeningStartedAt) < entryGuardMs;
+    const detectionWindowActive = listeningWindowActive && !entryGuardActive;
+
+    // Call audio level callback with current data (before any filtering)
+    if (detectionWindowActive && !isSettling) {
+      if (isSpike) {
+        this.consecutiveSpikeFrames += 1;
+        if (isFastStrike) {
+          this.consecutiveSpikeFrames = Math.max(this.consecutiveSpikeFrames, this.opts.spikeHoldFrames);
+        }
+      } else {
+        this.consecutiveSpikeFrames = 0;
+      }
+    } else {
+      this.consecutiveSpikeFrames = 0;
+    }
+
+    const holdFramesMet = this.consecutiveSpikeFrames >= this.opts.spikeHoldFrames;
+    const singleFrameBypassRatio = this.opts.singleFrameBypassRatio > 0 ? this.opts.singleFrameBypassRatio : 0;
+    const singleFrameBypass = !holdFramesMet && singleFrameBypassRatio > 0 && ratio >= singleFrameBypassRatio;
+    const detectionReady = detectionWindowActive && (holdFramesMet || singleFrameBypass);
+
+    if (this.opts.onAudioLevel) {
+      this.opts.onAudioLevel({
+        level: adjustedLevel,
+        levelRaw: meteringLinear,
+        baseline: this.baselineEnergy,
+        threshold,
+        ratio,
+        isListening: this.isListening,
+        listeningWindowActive,
+        entryGuardActive,
+        detectionWindowActive,
+        gainMultiplier,
+        consecutiveSpikeFrames: this.consecutiveSpikeFrames,
+        spikeHoldFrames: this.opts.spikeHoldFrames,
+        videoPosition: this.getVideoPosition(),
+        isAboveThreshold: isSpike,
+        spikeNumber: currentSpikeNumber,
+        isSettling,
+        holdFramesMet,
+        graceActive,
+        singleFrameBypass
+      });
+    }
+
+    // Debounce check
+    const timeSinceLastHit = sampleTimestamp - this.lastHitAt;
+    const debounceOk = timeSinceLastHit > this.opts.debounceMs;
+
+    // Log ALL significant audio activity
+    if (adjustedLevel > this.baselineEnergy * 1.5) {
+      const wouldDetect = isSpike && debounceOk && detectionReady && !isSettling;
+      const rejectedReason = !isSpike ? 'Too quiet' :
+                             !debounceOk ? 'Debounce' :
+                             isSettling ? 'Settling' :
+                             !listeningWindowActive ? 'Listening window closed' :
+                             entryGuardActive ? `Entry guard (${Math.max(0, Math.round(entryGuardMs - (sampleTimestamp - this.listeningStartedAt)))}ms)` :
+                             !detectionWindowActive ? 'Entry guard active' :
+                             !detectionReady ? `Not held (${this.consecutiveSpikeFrames}/${this.opts.spikeHoldFrames})` :
+                             'None';
+
+      console.log('🔊 AUDIO SPIKE:', {
+        level: adjustedLevel.toFixed(6),
+        levelRaw: meteringLinear.toFixed(6),
+        baseline: this.baselineEnergy.toFixed(6),
+        threshold: threshold.toFixed(6),
+        ratio: ratio.toFixed(2) + 'x',
+        gainMultiplier: gainMultiplier.toFixed(2) + 'x',
+        listening: this.isListening,
+        listeningWindowActive,
+        entryGuardActive,
+        detectionWindowActive,
+        consecutiveSpikeFrames: this.consecutiveSpikeFrames,
+        spikeHoldFrames: this.opts.spikeHoldFrames,
+        holdFramesMet,
+        graceActive,
+        singleFrameBypass,
+        videoPos: (this.getVideoPosition() * 100).toFixed(1) + '%',
+        wouldDetect,
+        reason: wouldDetect ? 'DETECTED ✅' : rejectedReason,
+        fastStrike: isFastStrike
+      });
+    }
+
+    if (isSpike && debounceOk && detectionReady && !isSettling) {
+      // Capture position IMMEDIATELY (synchronously with spike detection)
+      const captureTimestamp = performance.now();
+      const capturedPosition = this.getVideoPosition();
+      const videoTimestamp = this.opts.videoPlayer?.currentTime || 0;
+
+      // Update state
+      this.lastHitAt = sampleTimestamp;
+      this.hitCount++;
+      this.hitDetectedThisLoop = true;  // Mark hit detected, stop listening for rest of loop
+
+      // Store in pending hits buffer for accurate processing
+      this.pendingHits.push({
+        captureTimestamp,
+        videoPosition: capturedPosition,
+        videoTimestamp,
+        audioLevel: adjustedLevel,
+        baseline: this.baselineEnergy,
+        ratio,
+        hitNumber: this.hitCount
+      });
+
+      if (this.opts.debugMode) {
+        console.log(`🎯 HIT #${this.hitCount} CAPTURED at ${(capturedPosition * 100).toFixed(1)}% (will process in ${this.opts.hitProcessingDelayMs}ms)`, {
+          captureTime: captureTimestamp.toFixed(0) + 'ms',
+          videoTime: videoTimestamp.toFixed(3) + 's',
+          ratio: ratio.toFixed(1) + 'x'
+        });
+      }
+
+      // Process immediately when possible to reduce UI latency
+      this.processPendingHits();
+    }
+
+    // Debug logging
+    if (this.opts.debugMode && this.frameCount % 10 === 0) {
+      console.log(`📊 [${this.frameCount}] Audio: ${meteringLinear.toFixed(6)}, Baseline: ${this.baselineEnergy.toFixed(6)}, Threshold: ${threshold.toFixed(6)}, Listening: ${this.isListening}`);
+    }
+
+    this.frameCount++;
+  }
+
+  /**
    * Process audio recording status and detect hits
    */
   async processAudioStatus() {
+    if (this.useAudioStream) {
+      return; // Native audio stream provides its own callbacks
+    }
+
     if (!this.recording || !this.isRunning || this.isPaused) return;
 
     try {
@@ -294,112 +554,7 @@ export class VideoSyncDetectorV2 {
         const meteringDb = Math.max(-160, Math.min(0, status.metering));
         meteringLinear = Math.pow(10, meteringDb / 20);
       }
-
-      // Update baseline during 2-second gap OR during first loop (before any gap has occurred)
-      // After first gap, lock to gap-only updates to prevent video audio pollution
-      if (this.isInGap || this.isFirstLoop) {
-        this.updateBaseline(meteringLinear);
-      }
-
-      // Check for energy spike above threshold
-      const baseThreshold = this.baselineEnergy * this.opts.energyThreshold;
-      const threshold = Math.min(Math.max(0.01, baseThreshold), 0.5);
-      const isSpike = meteringLinear > threshold;
-
-      // Track spikes over 4x for debugging (helps identify putter hits)
-      const ratio = meteringLinear / (this.baselineEnergy + 0.0001);
-      const is4xSpike = ratio >= 4.0;
-      const timeSinceLastSpike = now - this.lastSpikeAt;
-      let currentSpikeNumber = null;
-
-      if (is4xSpike && timeSinceLastSpike > 100) {  // Debounce spikes by 100ms
-        this.spikeCount++;
-        this.lastSpikeAt = now;
-        currentSpikeNumber = this.spikeCount;
-
-        if (this.opts.debugMode) {
-          console.log(`🔥 SPIKE #${this.spikeCount}: ${ratio.toFixed(1)}x at ${(this.getVideoPosition() * 100).toFixed(1)}%`);
-        }
-      }
-
-      // Call audio level callback with current data (before any filtering)
-      if (this.opts.onAudioLevel) {
-        this.opts.onAudioLevel({
-          level: meteringLinear,
-          baseline: this.baselineEnergy,
-          threshold,
-          ratio,
-          isListening: this.isListening,
-          videoPosition: this.getVideoPosition(),
-          isAboveThreshold: isSpike,
-          spikeNumber: currentSpikeNumber  // Show spike number when over 4x
-        });
-      }
-
-      // Debounce check
-      const timeSinceLastHit = now - this.lastHitAt;
-      const debounceOk = timeSinceLastHit > this.opts.debounceMs;
-
-      // Log ALL significant audio activity
-      if (meteringLinear > this.baselineEnergy * 1.5) {
-        const wouldDetect = isSpike && debounceOk && this.isListening;
-        const rejectedReason = !isSpike ? 'Too quiet' :
-                               !debounceOk ? 'Debounce' :
-                               !this.isListening ? 'Not listening (before 3rd beat)' :
-                               'None';
-
-        console.log('🔊 AUDIO SPIKE:', {
-          level: meteringLinear.toFixed(6),
-          baseline: this.baselineEnergy.toFixed(6),
-          threshold: threshold.toFixed(6),
-          ratio: ratio.toFixed(2) + 'x',
-          listening: this.isListening,
-          videoPos: (this.getVideoPosition() * 100).toFixed(1) + '%',
-          wouldDetect,
-          reason: wouldDetect ? 'DETECTED ✅' : rejectedReason
-        });
-      }
-
-      if (isSpike && debounceOk && this.isListening) {
-        // Capture position IMMEDIATELY (synchronously with spike detection)
-        const captureTimestamp = performance.now();
-        const capturedPosition = this.getVideoPosition();
-        const videoTimestamp = this.opts.videoPlayer?.currentTime || 0;
-
-        // Update state
-        this.lastHitAt = now;
-        this.hitCount++;
-        this.hitDetectedThisLoop = true;  // Mark hit detected, stop listening for rest of loop
-
-        // Store in pending hits buffer for accurate processing
-        this.pendingHits.push({
-          captureTimestamp,
-          videoPosition: capturedPosition,
-          videoTimestamp,
-          audioLevel: meteringLinear,
-          baseline: this.baselineEnergy,
-          ratio,
-          hitNumber: this.hitCount
-        });
-
-        if (this.opts.debugMode) {
-          console.log(`🎯 HIT #${this.hitCount} CAPTURED at ${(capturedPosition * 100).toFixed(1)}% (will process in ${this.opts.hitProcessingDelayMs}ms)`, {
-            captureTime: captureTimestamp.toFixed(0) + 'ms',
-            videoTime: videoTimestamp.toFixed(3) + 's',
-            ratio: ratio.toFixed(1) + 'x'
-          });
-        }
-
-        // Hit will be processed by processPendingHits() after delay
-        // This ensures accurate position without affecting timing
-      }
-
-      // Debug logging
-      if (this.opts.debugMode && this.frameCount % 10 === 0) {
-        console.log(`📊 [${this.frameCount}] Audio: ${meteringLinear.toFixed(6)}, Baseline: ${this.baselineEnergy.toFixed(6)}, Threshold: ${threshold.toFixed(6)}, Listening: ${this.isListening}`);
-      }
-
-      this.frameCount++;
+      this.handleMeteringSample(meteringLinear, now);
     } catch (error) {
       if (this.isRunning && this.opts.debugMode) {
         console.warn('Error processing audio:', error.message);
@@ -432,15 +587,17 @@ export class VideoSyncDetectorV2 {
 
       // Calculate timing using CAPTURED position (not current position)
       const timing = this.calculateTiming(hit.videoPosition);
+      const audioLatencyMs = this.opts.audioLatencyMs || 0;
 
       const hitEvent = {
-        timestamp: hit.captureTimestamp,
+        timestamp: hit.captureTimestamp - audioLatencyMs,
         position: hit.videoPosition,
         videoTimestamp: hit.videoTimestamp,
         audioLevel: hit.audioLevel,
         baseline: hit.baseline,
         ratio: hit.ratio,
         ...timing,
+        latencyAppliedMs: audioLatencyMs,
         hitNumber: hit.hitNumber
       };
 
@@ -472,11 +629,133 @@ export class VideoSyncDetectorV2 {
   }
 
   /**
+   * Start recording using the native Expo audio stream module
+   */
+  async startAudioStreamRecording() {
+    if (!this.audioStreamModule) {
+      throw new Error('ExpoPlayAudioStream module not available');
+    }
+
+    const recordingConfig = {
+      sampleRate: this.opts.sampleRate,
+      channels: 1,
+      bitsPerChannel: 16,
+      interval: 100, // ms between callbacks (match metering interval)
+      onAudioStream: this.handleAudioStreamData
+    };
+
+    const result = await this.audioStreamModule.startRecording(recordingConfig);
+    this.audioStreamSubscription = result?.subscription ?? null;
+    this.isAudioStreamActive = true;
+  }
+
+  /**
+   * Stop the native audio stream recording and clean up subscription
+   */
+  async stopAudioStreamRecording() {
+    if (!this.audioStreamModule || !this.isAudioStreamActive) {
+      return;
+    }
+
+    try {
+      await this.audioStreamModule.stopRecording();
+    } catch (error) {
+      if (this.opts.debugMode) {
+        console.warn('Error stopping ExpoPlayAudioStream recording:', error.message);
+      }
+    }
+
+    if (this.audioStreamSubscription && typeof this.audioStreamSubscription.remove === 'function') {
+      try {
+        this.audioStreamSubscription.remove();
+      } catch (subscriptionError) {
+        if (this.opts.debugMode) {
+          console.warn('Error removing audio stream subscription:', subscriptionError.message);
+        }
+      }
+    }
+
+    this.audioStreamSubscription = null;
+    this.isAudioStreamActive = false;
+  }
+
+  /**
+   * Handle audio data from ExpoPlayAudioStream
+   * @param {Object} audioData - Native audio stream payload
+   */
+  handleAudioStreamData(audioData) {
+    if (!this.isRunning) {
+      return;
+    }
+
+    try {
+      const base64Audio = audioData?.data;
+      if (!base64Audio) {
+        return;
+      }
+
+      const samples = this.base64ToInt16Array(base64Audio);
+      if (!samples || samples.length === 0) {
+        return;
+      }
+
+      const rms = this.computeRms(samples);
+      this.handleMeteringSample(rms, performance.now());
+    } catch (error) {
+      if (this.opts.debugMode) {
+        console.warn('Error processing audio stream data:', error.message);
+      }
+    }
+  }
+
+  /**
+   * Convert base64 encoded PCM16 audio to Int16Array
+   */
+  base64ToInt16Array(base64) {
+    let binaryString;
+    if (typeof atob === 'function') {
+      binaryString = atob(base64);
+    } else if (typeof globalThis !== 'undefined' && typeof globalThis.Buffer !== 'undefined') {
+      binaryString = globalThis.Buffer.from(base64, 'base64').toString('binary');
+    } else {
+      throw new Error('No base64 decoder available');
+    }
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    return new Int16Array(bytes.buffer);
+  }
+
+  /**
+   * Compute RMS value from PCM16 samples (returns 0-1)
+   */
+  computeRms(samples) {
+    if (!samples || samples.length === 0) {
+      return 0;
+    }
+
+    let sumSquares = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const normalized = samples[i] / 32768;
+      sumSquares += normalized * normalized;
+    }
+
+    return Math.sqrt(sumSquares / samples.length);
+  }
+
+  /**
    * Start position monitoring
    */
   startPositionMonitoring() {
     this.monitoringInterval = setInterval(() => {
       if (!this.isRunning) return;
+
+      // Process pending hits (delayed for accuracy) before any state resets
+      this.processPendingHits();
 
       // Check for loop restart
       this.checkForLoopRestart();
@@ -486,25 +765,69 @@ export class VideoSyncDetectorV2 {
       // State change: start listening
       if (shouldListen && !this.isListening) {
         this.isListening = true;
+        const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now();
+        this.listeningStartedAt = now;
+        this.listeningGraceUntil = now + Math.max(0, this.opts.listeningTailMs || 0);
         const beatTiming = this.getBeatTiming();
+        const positionFraction = this.getVideoPosition();
+        const positionPercent = (positionFraction * 100).toFixed(1);
+        const videoTimeMs = positionFraction * beatTiming.videoDuration;
+        const beat3TimeMs = beatTiming.beat3Position * beatTiming.videoDuration;
+        const timeSinceBeat3Ms = Math.max(0, videoTimeMs - beat3TimeMs);
+
+        console.log('🎧 LISTENING WINDOW OPEN', {
+          bpm: this.opts.bpm,
+          positionPercent: `${positionPercent}%`,
+          delayAfterBeat3Ms: beatTiming.listenDelayMs,
+          timeSinceBeat3Ms: Math.round(timeSinceBeat3Ms),
+          beat3TimeMs: Math.round(beat3TimeMs),
+          beat4TimeMs: Math.round(beatTiming.beat4Position * beatTiming.videoDuration),
+          videoTimeMs: Math.round(videoTimeMs),
+          spikeHoldFrames: this.opts.spikeHoldFrames,
+        });
+
         if (this.opts.debugMode) {
-          console.log(`🎤 LISTENING STARTED at ${(this.getVideoPosition() * 100).toFixed(1)}% (${beatTiming.listenDelayMs}ms after Beat 3 at 50%)`);
+          console.log(`🎤 LISTENING STARTED at ${positionPercent}% (${beatTiming.listenDelayMs}ms after Beat 3 at 50%)`);
         }
       }
 
       // State change: stop listening
       if (!shouldListen && this.isListening) {
         this.isListening = false;
+        const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now();
+        this.listeningStartedAt = 0;
+        this.listeningGraceUntil = now + Math.max(0, this.opts.listeningTailMs || 0);
+        const beatTiming = this.getBeatTiming();
+        const positionFraction = this.getVideoPosition();
+        const positionPercent = (positionFraction * 100).toFixed(1);
+        const videoTimeMs = positionFraction * beatTiming.videoDuration;
+        const beat3TimeMs = beatTiming.beat3Position * beatTiming.videoDuration;
+        const timeSinceBeat3Ms = Math.max(0, videoTimeMs - beat3TimeMs);
+        const windowStartPercent = (beatTiming.listenStartPercent * 100).toFixed(1);
+        const windowDurationMs = Math.max(0, videoTimeMs - (beatTiming.listenStartPercent * beatTiming.videoDuration));
+
+        console.log('🛑 LISTENING WINDOW CLOSED', {
+          bpm: this.opts.bpm,
+          positionPercent: `${positionPercent}%`,
+          windowStartPercent: `${windowStartPercent}%`,
+          windowDurationMs: Math.round(windowDurationMs),
+          timeSinceBeat3Ms: Math.round(timeSinceBeat3Ms),
+          beat4TimeMs: Math.round(beatTiming.beat4Position * beatTiming.videoDuration),
+          videoTimeMs: Math.round(videoTimeMs),
+          spikeHoldFrames: this.opts.spikeHoldFrames,
+        });
+
         if (this.opts.debugMode) {
-          console.log(`🔇 LISTENING ENDED at ${(this.getVideoPosition() * 100).toFixed(1)}%`);
+          console.log(`🔇 LISTENING ENDED at ${positionPercent}% (window start was ${windowStartPercent}%)`);
         }
       }
 
       // Poll audio status
       this.processAudioStatus();
-
-      // Process pending hits (delayed for accuracy)
-      this.processPendingHits();
     }, 100);
   }
 
@@ -544,6 +867,11 @@ export class VideoSyncDetectorV2 {
         listenDelay: beatTiming.listenDelayMs + 'ms',
         listenWindow: `${(beatTiming.listenStartPercent * 100).toFixed(1)}%-100% (${beatTiming.listenDelayMs}ms after Beat 3)`,
         targetPosition: (targetPos * 100).toFixed(1) + '%',
+        micGain: `${this.opts.micGain}x`,
+        energyThreshold: this.opts.energyThreshold,
+        baselineWindow: this.opts.baselineWindow,
+        baselineSettleMs: this.opts.baselineSettleMs,
+        spikeHoldFrames: this.opts.spikeHoldFrames,
         debugMode: this.opts.debugMode ? 'ON' : 'OFF'
       });
 
@@ -553,48 +881,57 @@ export class VideoSyncDetectorV2 {
         throw new Error('Microphone permission denied');
       }
 
-      // Configure audio mode for recording (required by expo-av)
-      // Note: This may override native audio session settings, so we compensate
-      // by setting video player volume to maximum in the hook
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
-        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-        shouldDuckAndroid: false,
-      });
+      this.recording = null;
 
-      // Create and start recording
-      this.recording = new Audio.Recording();
+      if (this.useAudioStream) {
+        if (this.opts.debugMode) {
+          console.log('🎧 Using ExpoPlayAudioStream for audio capture (defaultToSpeaker enabled)');
+        }
+        await this.startAudioStreamRecording();
+      } else {
+        // Configure audio mode for recording (required by expo-av)
+        // Note: This may override native audio session settings, so we compensate
+        // by setting video player volume to maximum in the hook
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+          interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+          shouldDuckAndroid: false,
+        });
 
-      const recordingOptions = {
-        isMeteringEnabled: true,
-        keepAudioActiveHint: true,
-        android: {
-          extension: '.m4a',
-          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-          audioEncoder: Audio.AndroidAudioEncoder.AAC,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        ios: {
-          extension: '.m4a',
-          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-          audioQuality: Audio.IOSAudioQuality.HIGH,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        web: {
-          mimeType: 'audio/webm',
-          bitsPerSecond: 128000,
-        },
-      };
+        // Create and start recording
+        this.recording = new Audio.Recording();
 
-      await this.recording.prepareToRecordAsync(recordingOptions);
-      await this.recording.startAsync();
+        const recordingOptions = {
+          isMeteringEnabled: true,
+          keepAudioActiveHint: true,
+          android: {
+            extension: '.m4a',
+            outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+            audioEncoder: Audio.AndroidAudioEncoder.AAC,
+            sampleRate: 44100,
+            numberOfChannels: 1,
+            bitRate: 128000,
+          },
+          ios: {
+            extension: '.m4a',
+            outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+            audioQuality: Audio.IOSAudioQuality.HIGH,
+            sampleRate: 44100,
+            numberOfChannels: 1,
+            bitRate: 128000,
+          },
+          web: {
+            mimeType: 'audio/webm',
+            bitsPerSecond: 128000,
+          },
+        };
+
+        await this.recording.prepareToRecordAsync(recordingOptions);
+        await this.recording.startAsync();
+      }
 
       this.isRunning = true;
       this.isPaused = false;
@@ -603,11 +940,9 @@ export class VideoSyncDetectorV2 {
       this.hitCount = 0;
       this.spikeCount = 0;
       this.lastSpikeAt = 0;
-      this.baselineFrames = [];
-      this.baselineEnergy = 0.005;      // Start with minimum baseline (not 0)
       this.lastHitAt = 0;
       this.lastVideoPosition = 0;
-      this.isFirstLoop = true;          // Allow baseline building during first loop
+      this.resetBaseline('start');
 
       // Set up video event listener to detect 2-second gap
       const player = this.opts.videoPlayer;
@@ -646,7 +981,9 @@ export class VideoSyncDetectorV2 {
       this.isPaused = false;
 
       // Cleanup
-      if (this.recording) {
+      if (this.useAudioStream) {
+        await this.stopAudioStreamRecording();
+      } else if (this.recording) {
         try {
           await this.recording.stopAndUnloadAsync();
         } catch (e) {
@@ -667,6 +1004,17 @@ export class VideoSyncDetectorV2 {
 
     this.isPaused = true;
     this.isListening = false;
+    this.listeningStartedAt = 0;
+
+    if (this.useAudioStream && this.isAudioStreamActive && this.audioStreamModule?.pauseRecording) {
+      try {
+        this.audioStreamModule.pauseRecording();
+      } catch (error) {
+        if (this.opts.debugMode) {
+          console.warn('Error pausing audio stream recording:', error.message);
+        }
+      }
+    }
 
     if (this.opts.debugMode) {
       console.log('⏸️ Detector paused (recording continues)');
@@ -680,6 +1028,17 @@ export class VideoSyncDetectorV2 {
     if (!this.isRunning) return;
 
     this.isPaused = false;
+    this.resetBaseline('resume');
+
+    if (this.useAudioStream && this.isAudioStreamActive && this.audioStreamModule?.resumeRecording) {
+      try {
+        this.audioStreamModule.resumeRecording();
+      } catch (error) {
+        if (this.opts.debugMode) {
+          console.warn('Error resuming audio stream recording:', error.message);
+        }
+      }
+    }
 
     if (this.opts.debugMode) {
       console.log('▶️ Detector resumed');
@@ -698,6 +1057,10 @@ export class VideoSyncDetectorV2 {
       this.isRunning = false;
       this.isPaused = false;
       this.isListening = false;
+      this.listeningStartedAt = 0;
+      this.consecutiveSpikeFrames = 0;
+      this.baselineSettleUntil = 0;
+      this.listeningGraceUntil = 0;
 
       // Stop monitoring
       this.stopPositionMonitoring();
@@ -709,7 +1072,9 @@ export class VideoSyncDetectorV2 {
       }
 
       // Stop recording
-      if (this.recording) {
+      if (this.useAudioStream) {
+        await this.stopAudioStreamRecording();
+      } else if (this.recording) {
         try {
           await this.recording.stopAndUnloadAsync();
         } catch (error) {
@@ -727,7 +1092,43 @@ export class VideoSyncDetectorV2 {
       this.isRunning = false;
       this.isPaused = false;
       this.isListening = false;
+      this.listeningStartedAt = 0;
+      this.consecutiveSpikeFrames = 0;
       this.recording = null;
+      this.baselineSettleUntil = 0;
+      this.listeningGraceUntil = 0;
+      if (this.useAudioStream) {
+        await this.stopAudioStreamRecording();
+      }
+    }
+  }
+
+  /**
+   * Update detector parameters at runtime
+   * @param {Object} params - Partial options to merge
+   */
+  updateParams(params = {}) {
+    Object.assign(this.opts, params);
+
+    if (params.spikeHoldFrames !== undefined) {
+      this.opts.spikeHoldFrames = Math.max(1, Math.floor(this.opts.spikeHoldFrames || 1));
+    }
+
+    if (params.audioLatencyMs !== undefined) {
+      if (typeof this.opts.audioLatencyMs !== 'number' || Number.isNaN(this.opts.audioLatencyMs)) {
+        this.opts.audioLatencyMs = this.opts.hitProcessingDelayMs || 0;
+      }
+    }
+
+    if (params.listeningEntryGuardMs !== undefined) {
+      const guardValue = Number(this.opts.listeningEntryGuardMs);
+      this.opts.listeningEntryGuardMs = Number.isFinite(guardValue)
+        ? Math.max(0, guardValue)
+        : this.opts.listeningEntryGuardMs;
+    }
+
+    if (params.debugMode !== undefined) {
+      this.opts.debugMode = !!params.debugMode;
     }
   }
 
@@ -761,7 +1162,11 @@ export class VideoSyncDetectorV2 {
       frameCount: this.frameCount,
       baselineEnergy: this.baselineEnergy.toFixed(6),
       videoPosition: (this.getVideoPosition() * 100).toFixed(1) + '%',
-      listenWindow: `${(beatTiming.listenStartPercent * 100).toFixed(0)}%-100%`
+      listenWindow: `${(beatTiming.listenStartPercent * 100).toFixed(0)}%-100%`,
+      entryGuardMs: this.opts.listeningEntryGuardMs,
+      micGain: `${this.opts.micGain}x`,
+      energyThreshold: this.opts.energyThreshold,
+      spikeHoldFrames: this.opts.spikeHoldFrames
     };
   }
 
@@ -777,9 +1182,40 @@ export class VideoSyncDetectorV2 {
     this.lastSpikeAt = 0;
     this.frameCount = 0;
     this.lastVideoPosition = 0;
+    this.scheduleBaselineSettle('reset');
 
     if (this.opts.debugMode) {
       console.log('🔄 Detector reset');
+    }
+  }
+
+  /**
+   * Determine whether we are within the post-reset settling period
+   * @param {number} timestamp - Comparison timestamp
+   * @returns {boolean}
+   */
+  isSettling(timestamp = performance.now()) {
+    return this.baselineSettleUntil > 0 && timestamp < this.baselineSettleUntil;
+  }
+
+  /**
+   * Schedule a settling window after baseline reset
+   * @param {string} reason - Debug identifier
+   */
+  scheduleBaselineSettle(reason = 'reset') {
+    const settleMs = Math.max(0, this.opts.baselineSettleMs ?? 0);
+    if (settleMs <= 0) {
+      this.baselineSettleUntil = 0;
+      return;
+    }
+
+    const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+    this.baselineSettleUntil = now + settleMs;
+
+    if (this.opts.debugMode) {
+      console.log(`⏱️ Baseline settling for ${settleMs}ms (${reason})`);
     }
   }
 }

@@ -10,7 +10,8 @@ import { authenticateUser } from './services/auth';
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [initComplete, setInitComplete] = useState(false);
+  const [homeReady, setHomeReady] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -71,24 +72,12 @@ export default function App() {
         console.error('Initialization error:', err);
         setError('Failed to initialize app. Please check your connection.');
       } finally {
-        setLoading(false);
+        setInitComplete(true);
       }
     };
 
     initializeApp();
   }, []);
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Image
-          source={require('./assets/Logo_NoBackground.jpg')}
-          style={styles.loadingLogo}
-          resizeMode="contain"
-        />
-      </View>
-    );
-  }
 
   if (error) {
     return (
@@ -97,16 +86,38 @@ export default function App() {
       </View>
     );
   }
-  
+
+  const showSplash = !initComplete || !homeReady;
+
   return (
     <SafeAreaProvider>
-      <HomeScreen user={user} />
-      <StatusBar style="auto" />
+      <View style={styles.appContainer}>
+        {initComplete && (
+          <HomeScreen
+            user={user}
+            onReady={() => setHomeReady(true)}
+          />
+        )}
+        <StatusBar style="auto" />
+        {showSplash && (
+          <View style={styles.loadingOverlay}>
+            <Image
+              source={require('./assets/Logo_NoBackground.jpg')}
+              style={styles.loadingLogo}
+              resizeMode="contain"
+            />
+          </View>
+        )}
+      </View>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  appContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -116,6 +127,13 @@ const styles = StyleSheet.create({
   loadingLogo: {
     width: '80%',
     height: 200,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+    zIndex: 10,
   },
   errorContainer: {
     flex: 1,

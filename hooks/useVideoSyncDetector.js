@@ -14,6 +14,16 @@ import { VideoSyncDetectorV2 } from '../services/dsp/VideoSyncDetectorV2';
  * @param {number} options.bpm - Beats per minute (70-80)
  * @param {Object} options.videoPlayer - Video player instance from expo-video
  * @param {Function} options.onHitDetected - Callback when hit is detected
+ * @param {number} options.listenDelayMs - Delay after Beat 3 before listening (ms)
+ * @param {number} options.micGain - Software gain multiplier applied to microphone signal
+ * @param {number} options.spikeHoldFrames - Consecutive frames above threshold required to register a hit
+ * @param {number} options.energyThreshold - Multiplier above baseline required to trigger a spike
+ * @param {number} options.baselineWindow - Frames sampled for baseline smoothing
+ * @param {number} options.baselineSettleMs - Guard period after baseline reset
+ * @param {number} options.singleFrameBypassRatio - Ratio that allows one-frame detections
+ * @param {number} options.listeningTailMs - Time to keep window open after exit
+ * @param {number} options.hitProcessingDelayMs - Delay before processing captured hits
+ * @param {number} options.audioLatencyMs - Compensation applied when mapping to UI
  * @returns {Object} Hook state and methods
  */
 export function useVideoSyncDetector(options = {}) {
@@ -22,7 +32,18 @@ export function useVideoSyncDetector(options = {}) {
     videoPlayer = null,
     onHitDetected = () => {},
     onAudioLevel = () => {},
-    debugMode = false
+    debugMode = false,
+    listenDelayMs = 380,
+    micGain = 3.0,
+    spikeHoldFrames = 2,
+    energyThreshold = 1.2,
+    baselineWindow = 80,
+    baselineSettleMs = 100,
+    singleFrameBypassRatio = 2.2,
+    listeningTailMs = 240,
+    hitProcessingDelayMs = 0,
+    audioLatencyMs = 180,
+    listeningEntryGuardMs = 100,
   } = options;
 
   // State management
@@ -50,9 +71,18 @@ export function useVideoSyncDetector(options = {}) {
           bpm,
           videoPlayer,
           beatsInVideo: 4,            // 4 beats per video
-          energyThreshold: 1.5,       // 1.5x baseline for detection (lowered for weak putter hits)
-          baselineWindow: 50,         // 50 frames for baseline averaging
+          energyThreshold,
+          baselineWindow,             // Frames for baseline averaging
+          baselineSettleMs,
           debounceMs: 200,            // 200ms between detections
+          listenDelayMs: Math.max(0, listenDelayMs),
+          micGain,
+          spikeHoldFrames: Math.max(1, Math.floor(spikeHoldFrames)),
+          singleFrameBypassRatio,
+          listeningTailMs,
+          listeningEntryGuardMs: Math.max(0, listeningEntryGuardMs),
+          hitProcessingDelayMs: Math.max(0, hitProcessingDelayMs),
+          audioLatencyMs: Math.max(0, audioLatencyMs),
 
           debugMode,
 
@@ -117,6 +147,87 @@ export function useVideoSyncDetector(options = {}) {
       detectorRef.current.setBpm(bpm);
     }
   }, [bpm]);
+
+  // Update listen delay when it changes
+  useEffect(() => {
+    if (detectorRef.current) {
+      detectorRef.current.opts.listenDelayMs = Math.max(0, listenDelayMs);
+    }
+  }, [listenDelayMs]);
+
+  // Update microphone gain when it changes
+  useEffect(() => {
+    if (detectorRef.current) {
+      detectorRef.current.opts.micGain = micGain;
+    }
+  }, [micGain]);
+
+  // Update spike hold frames when it changes
+  useEffect(() => {
+    if (detectorRef.current) {
+      detectorRef.current.opts.spikeHoldFrames = Math.max(1, Math.floor(spikeHoldFrames));
+    }
+  }, [spikeHoldFrames]);
+
+  useEffect(() => {
+    if (detectorRef.current) {
+      const ratioValue = Number(singleFrameBypassRatio);
+      detectorRef.current.opts.singleFrameBypassRatio = Number.isFinite(ratioValue)
+        ? Math.max(1.2, ratioValue)
+        : detectorRef.current.opts.singleFrameBypassRatio;
+    }
+  }, [singleFrameBypassRatio]);
+
+  useEffect(() => {
+    if (detectorRef.current) {
+      const tailValue = Number(listeningTailMs);
+      detectorRef.current.opts.listeningTailMs = Number.isFinite(tailValue)
+        ? Math.max(0, tailValue)
+        : detectorRef.current.opts.listeningTailMs;
+    }
+  }, [listeningTailMs]);
+
+  useEffect(() => {
+    if (detectorRef.current) {
+      const guardValue = Number(listeningEntryGuardMs);
+      detectorRef.current.opts.listeningEntryGuardMs = Number.isFinite(guardValue)
+        ? Math.max(0, guardValue)
+        : detectorRef.current.opts.listeningEntryGuardMs;
+    }
+  }, [listeningEntryGuardMs]);
+
+  // Update energy threshold when it changes
+  useEffect(() => {
+    if (detectorRef.current) {
+      detectorRef.current.opts.energyThreshold = energyThreshold;
+    }
+  }, [energyThreshold]);
+
+  // Update baseline window when it changes
+  useEffect(() => {
+    if (detectorRef.current) {
+      detectorRef.current.opts.baselineWindow = baselineWindow;
+    }
+  }, [baselineWindow]);
+
+  // Update baseline settling period when it changes
+  useEffect(() => {
+    if (detectorRef.current) {
+      detectorRef.current.opts.baselineSettleMs = baselineSettleMs;
+    }
+  }, [baselineSettleMs]);
+
+  useEffect(() => {
+    if (detectorRef.current) {
+      detectorRef.current.opts.hitProcessingDelayMs = Math.max(0, hitProcessingDelayMs);
+    }
+  }, [hitProcessingDelayMs]);
+
+  useEffect(() => {
+    if (detectorRef.current) {
+      detectorRef.current.opts.audioLatencyMs = Math.max(0, audioLatencyMs);
+    }
+  }, [audioLatencyMs]);
 
   // Update video player reference when it changes
   useEffect(() => {
