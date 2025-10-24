@@ -1,8 +1,8 @@
 diff --git a/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift b/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
-index c38bc1b..9e70b6d 100644
+index c38bc1b..b26f720 100644
 --- a/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
 +++ b/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
-@@ -373,14 +373,22 @@ class AudioSessionManager {
+@@ -378,19 +378,24 @@ class AudioSessionManager {
          
          do {
              let session = AVAudioSession.sharedInstance()
@@ -12,11 +12,10 @@ index c38bc1b..9e70b6d 100644
              // Check if the input node supports the desired format
              let inputNode = audioEngine.inputNode
              let hardwareFormat = inputNode.inputFormat(forBus: 0)
--            if hardwareFormat.sampleRate != newSettings.sampleRate {
++            Logger.debug("Debug: Hardware input format - sample rate: \(hardwareFormat.sampleRate) Hz, channels: \(hardwareFormat.channelCount)")
+             if hardwareFormat.sampleRate != newSettings.sampleRate {
 -                Logger.debug("Debug: Preferred sample rate not supported. Falling back to hardware sample rate \(session.sampleRate).")
 -                newSettings.sampleRate = session.sampleRate
-+            Logger.debug("Debug: Hardware input format - sample rate: \(hardwareFormat.sampleRate) Hz, channels: \(hardwareFormat.channelCount)")
-+            if hardwareFormat.sampleRate != newSettings.sampleRate {
 +                Logger.debug("Debug: Preferred sample rate not supported. Falling back to hardware sample rate \(hardwareFormat.sampleRate).")
 +                newSettings.sampleRate = hardwareFormat.sampleRate
 +            }
@@ -32,11 +31,37 @@ index c38bc1b..9e70b6d 100644
 +            try session.setPreferredSampleRate(newSettings.sampleRate)
 +            try session.setPreferredIOBufferDuration(1024 / newSettings.sampleRate)
              try session.setActive(true)
-@@ -397,7 +405,7 @@ class AudioSessionManager {
-             Logger.debug("Debug: Audio session is successfully configured. Actual sample rate is \(actualSampleRate) Hz")
-              
-             recordingSettings = newSettings  // Update the class property with the new settings
-         } catch {
+             
+             let actualSampleRate = session.sampleRate
+@@ -414,6 +419,28 @@ class AudioSessionManager {
+             return StartRecordingResult(error: "Error: Failed to create audio format with the specified bit depth.")
+         }
+ 
++        // CRITICAL FIX: Prevent crash when switching to detector mode
++        // Issue: AVAudioEngine format conflict (error -10868) occurs when:
++        // 1. expo-video has active audio session in .playback mode
++        // 2. We try to install recording tap without proper cleanup
++        // Solution: Stop engine, remove tap, validate format before installing new tap
++
++        // Step 1: Stop the audio engine if it's running (prevents format conflicts)
++        if audioEngine.isRunning {
++            Logger.debug("Debug: Stopping audio engine before tap installation")
++            audioEngine.stop()
++        }
++
++        // Step 2: Remove any existing tap (prevents "tap already installed" error)
++        Logger.debug("Debug: Checking for existing tap before installation")
++        audioEngine.inputNode.removeTap(onBus: 0)
++
++        // Step 3: Validate format compatibility
++        let inputNodeFormat = audioEngine.inputNode.inputFormat(forBus: 0)
++        Logger.debug("Debug: Input node format - SR: \(inputNodeFormat.sampleRate)Hz, CH: \(inputNodeFormat.channelCount)")
++        Logger.debug("Debug: Requested format - SR: \(audioFormat.sampleRate)Hz, CH: \(audioFormat.channelCount)")
++
++        // Step 4: Install tap (this can throw Obj-C exception if format is incompatible)
+         audioEngine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: audioFormat) { [weak self] (buffer, time) in
+             guard let self = self else {
+                 Logger.debug("Error: File URL or self is nil during buffer processing.")
 diff --git a/node_modules/@cjblack/expo-audio-stream/ios/AudioUtils.swift b/node_modules/@cjblack/expo-audio-stream/ios/AudioUtils.swift
 index f9559a8..eee0178 100644
 --- a/node_modules/@cjblack/expo-audio-stream/ios/AudioUtils.swift

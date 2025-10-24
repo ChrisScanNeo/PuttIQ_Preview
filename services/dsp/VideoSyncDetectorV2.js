@@ -630,6 +630,7 @@ export class VideoSyncDetectorV2 {
 
   /**
    * Start recording using the native Expo audio stream module
+   * Includes retry logic to handle audio session conflicts (e.g., with expo-video)
    */
   async startAudioStreamRecording() {
     if (!this.audioStreamModule) {
@@ -644,9 +645,58 @@ export class VideoSyncDetectorV2 {
       onAudioStream: this.handleAudioStreamData
     };
 
-    const result = await this.audioStreamModule.startRecording(recordingConfig);
-    this.audioStreamSubscription = result?.subscription ?? null;
-    this.isAudioStreamActive = true;
+    // Retry logic to handle audio session conflicts
+    const maxRetries = 2;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (this.opts.debugMode) {
+          console.log(`🎙️ Starting audio stream recording (attempt ${attempt}/${maxRetries})`);
+        }
+
+        const result = await this.audioStreamModule.startRecording(recordingConfig);
+        this.audioStreamSubscription = result?.subscription ?? null;
+        this.isAudioStreamActive = true;
+
+        if (this.opts.debugMode) {
+          console.log('✅ Audio stream recording started successfully');
+        }
+        return; // Success!
+
+      } catch (error) {
+        lastError = error;
+        const errorMsg = error?.message || String(error);
+
+        if (this.opts.debugMode) {
+          console.warn(`⚠️ Audio recording attempt ${attempt} failed:`, errorMsg);
+        }
+
+        // Check if this is the specific error we're trying to handle
+        const isFormatError = errorMsg.includes('-10868') ||
+                             errorMsg.includes('could not start the audio engine') ||
+                             errorMsg.includes('SetOutputFormat');
+
+        if (isFormatError && attempt < maxRetries) {
+          // Wait before retrying to allow audio session to settle
+          const retryDelay = 300; // ms
+          if (this.opts.debugMode) {
+            console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+          }
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        } else if (!isFormatError) {
+          // Different error - don't retry
+          throw error;
+        }
+      }
+    }
+
+    // All retries failed
+    const errorMsg = lastError?.message || String(lastError);
+    throw new Error(
+      `Failed to start recording after ${maxRetries} attempts: ${errorMsg}. ` +
+      'Please try closing and reopening the app.'
+    );
   }
 
   /**
@@ -990,6 +1040,15 @@ export class VideoSyncDetectorV2 {
           // Ignore cleanup errors
         }
         this.recording = null;
+      }
+
+      // Provide user-friendly error message for common issues
+      const errorMsg = error?.message || String(error);
+      if (errorMsg.includes('-10868') || errorMsg.includes('could not start the audio engine')) {
+        throw new Error(
+          'Failed to start detector: Audio system conflict detected. ' +
+          'Please close and reopen the app, then try again.'
+        );
       }
 
       throw error;
