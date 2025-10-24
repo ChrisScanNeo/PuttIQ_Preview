@@ -2,7 +2,7 @@ export default {
   expo: {
     name: "PuttIQ",
     slug: "PuttIQ2",
-    version: "1.1.0",
+    version: "1.1.1",
     orientation: "landscape",
     icon: "./assets/icons/iTunesArtwork@2x.png",
     userInterfaceStyle: "light",
@@ -16,7 +16,7 @@ export default {
       requireFullScreen: false,
       orientation: "landscape",
       bundleIdentifier: "com.golfingiq.puttiq",
-      buildNumber: "12",
+      buildNumber: "13",
       infoPlist: {
         UIBackgroundModes: ["audio"],
         NSMicrophoneUsageDescription: "PuttIQ needs microphone access to detect the timing of your putting strokes.",
