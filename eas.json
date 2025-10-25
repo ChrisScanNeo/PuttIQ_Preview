@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 3.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -35,7 +35,7 @@
     },
     "production": {
       "ios": {
-        "resourceClass": "m-large"
+        "resourceClass": "m-medium"
       },
       "android": {
         "buildType": "app-bundle"

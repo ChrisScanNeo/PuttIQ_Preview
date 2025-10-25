@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Asset } from 'expo-asset';
 import { Audio } from 'expo-av';
+import Constants from 'expo-constants';
 import HomeScreen from './screens/HomeScreen';
 import { authenticateUser } from './services/auth';
 
@@ -106,6 +107,9 @@ export default function App() {
               style={styles.loadingLogo}
               resizeMode="contain"
             />
+            <Text style={styles.versionText}>
+              v{Constants.expoConfig?.version || '1.1.1'} (Build {Constants.expoConfig?.ios?.buildNumber || '13'})
+            </Text>
           </View>
         )}
       </View>
@@ -145,5 +149,12 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#fff',
     textAlign: 'center',
+  },
+  versionText: {
+    position: 'absolute',
+    bottom: 30,
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '500',
   },
 });
