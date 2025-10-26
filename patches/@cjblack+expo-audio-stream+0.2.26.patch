@@ -1,15 +1,25 @@
 diff --git a/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift b/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
-index c38bc1b..b26f720 100644
+index c38bc1b..7221b73 100644
 --- a/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
 +++ b/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
-@@ -378,19 +378,24 @@ class AudioSessionManager {
+@@ -378,20 +378,29 @@ class AudioSessionManager {
          
          do {
              let session = AVAudioSession.sharedInstance()
 -            Logger.debug("Debug: Configuring audio session with sample rate: \(settings.sampleRate) Hz")
 +            Logger.debug("Debug: Configuring audio session with requested sample rate: \(settings.sampleRate) Hz")
-             
-             // Check if the input node supports the desired format
++
++            // CRITICAL: Set audio session to .playAndRecord BEFORE accessing inputNode
++            // This prevents error -10868 when expo-video has set session to .playback
++            Logger.debug("Debug: Setting audio session to .playAndRecord mode")
++            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
++            try session.setPreferredSampleRate(newSettings.sampleRate)
++            try session.setPreferredIOBufferDuration(1024 / newSettings.sampleRate)
++            try session.setActive(true)
++            Logger.debug("Debug: Audio session activated successfully")
+ 
+-            // Check if the input node supports the desired format
++            // NOW it's safe to check the input node format (session is configured for recording)
              let inputNode = audioEngine.inputNode
              let hardwareFormat = inputNode.inputFormat(forBus: 0)
 +            Logger.debug("Debug: Hardware input format - sample rate: \(hardwareFormat.sampleRate) Hz, channels: \(hardwareFormat.channelCount)")
@@ -23,17 +33,15 @@ index c38bc1b..b26f720 100644
 +                Logger.debug("Debug: Preferred channel count not supported. Falling back to hardware channel count \(hardwareFormat.channelCount).")
 +                newSettings.numberOfChannels = Int(hardwareFormat.channelCount)
              }
-             
+-            
 -            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
 -            try session.setPreferredSampleRate(settings.sampleRate)
 -            try session.setPreferredIOBufferDuration(1024 / settings.sampleRate)
-+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
-+            try session.setPreferredSampleRate(newSettings.sampleRate)
-+            try session.setPreferredIOBufferDuration(1024 / newSettings.sampleRate)
-             try session.setActive(true)
+-            try session.setActive(true)
              
              let actualSampleRate = session.sampleRate
-@@ -414,6 +419,28 @@ class AudioSessionManager {
+             if actualSampleRate != newSettings.sampleRate {
+@@ -414,6 +423,28 @@ class AudioSessionManager {
              return StartRecordingResult(error: "Error: Failed to create audio format with the specified bit depth.")
          }
  

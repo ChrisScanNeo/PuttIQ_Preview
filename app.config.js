@@ -16,7 +16,7 @@ export default {
       requireFullScreen: false,
       orientation: "landscape",
       bundleIdentifier: "com.golfingiq.puttiq",
-      buildNumber: "13",
+      buildNumber: "14",
       infoPlist: {
         UIBackgroundModes: ["audio"],
         NSMicrophoneUsageDescription: "PuttIQ needs microphone access to detect the timing of your putting strokes.",
