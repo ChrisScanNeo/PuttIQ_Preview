@@ -66,6 +66,11 @@ export class Scheduler {
     await this.audio.start();
   }
 
+  private dbToGain(gainDb?: number): number | undefined {
+    if (gainDb === undefined) return undefined;
+    return Math.pow(10, gainDb / 20);
+  }
+
   /**
    * Schedule metronome mode beats (Low-Low-High pattern)
    */
@@ -78,9 +83,10 @@ export class Scheduler {
 
       this.audio.enqueue({
         id: `beat_${beat}`,
+        sprite: 'metronome',
         clip: patternEvent.clip,
         tStartMs: beatTime,
-        gainDb: patternEvent.gainDb || 0,
+        gain: this.dbToGain(patternEvent.gainDb),
       });
     }
   }
@@ -107,9 +113,10 @@ export class Scheduler {
 
       this.audio.enqueue({
         id: `tone_${beat}`,
+        sprite: 'tones',
         clip: patternEvent.clip,
         tStartMs: beatTime,
-        gainDb: patternEvent.gainDb || 0,
+        gain: this.dbToGain(patternEvent.gainDb),
       });
     }
   }
@@ -126,9 +133,10 @@ export class Scheduler {
 
       this.audio.enqueue({
         id: `wind_${beat}`,
+        sprite: 'wind',
         clip: patternEvent.clip,
         tStartMs: beatTime,
-        gainDb: patternEvent.gainDb || -6, // Quieter clicks for wind mode
+        gain: this.dbToGain(patternEvent.gainDb ?? -6),
       });
     }
   }

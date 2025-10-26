@@ -7,6 +7,7 @@ import { nowMs } from './scheduler';
 import { loadSprite } from './spriteLoader';
 
 export type SpriteName = 'metronome' | 'tones' | 'wind';
+export type AudioMode = SpriteName;
 
 export type ClipEvent = {
   id: string;
@@ -36,6 +37,7 @@ export class AudioEngine {
   private running = false;
   private destroyed = false;
   private debug = true; // Enable debug logging
+  private currentMode: SpriteName = 'metronome';
 
   // Tune per platform (can be made adaptive after latency calibration)
   private scheduleAheadMs = 140; // iOS 80–140; Android 140–220
@@ -97,6 +99,18 @@ export class AudioEngine {
 
   enqueue(evt: ClipEvent) {
     this.queue.push(evt);
+  }
+
+  clearQueue() {
+    this.queue = [];
+  }
+
+  setMode(mode: SpriteName) {
+    this.currentMode = mode;
+  }
+
+  getMode(): SpriteName {
+    return this.currentMode;
   }
 
   start() {

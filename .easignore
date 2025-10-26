@@ -1,0 +1,34 @@
+# Dependencies are reinstalled on EAS build workers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Expo/Metro cache and build artifacts
+.expo/
+.expo-shared/
+dist/
+web-build/
+.metro-health-check*
+
+# Native project folders generated locally
+android/
+ios/
+
+# Local environment and tooling artefacts
+.env*.local
+.DS_Store
+*.pem
+*.tsbuildinfo
+
+# Large docs and archives not required for the binary
+Documents/
+\!Archive/
+AE Files/
+
+# Marketing website (tracked in git, but not needed in app builds)
+website/
+
+# Ensure bundled assets stay in the upload
+!assets/
+!assets/**

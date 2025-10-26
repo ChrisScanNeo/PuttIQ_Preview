@@ -1,7 +1,9 @@
 import { mediaDevices } from '@stream-io/react-native-webrtc';
 
+type WebRTCStream = Awaited<ReturnType<typeof mediaDevices.getUserMedia>>;
+
 // Keeping a getUserMedia stream alive with echoCancellation=true engages native AEC/NS.
-export async function enableAEC(): Promise<MediaStream | null> {
+export async function enableAEC(): Promise<WebRTCStream | null> {
   try {
     const stream = await mediaDevices.getUserMedia({
       audio: {

@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles for PuttIQ */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply font-sans;
+  }
+}
+
+@layer components {
+  /* Custom button styles */
+  .btn-primary {
+    @apply bg-golf-green-600 text-white px-6 py-3 rounded-full font-semibold hover:bg-golf-green-700 transition shadow-lg;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-golf-green-700 px-6 py-3 rounded-full font-semibold hover:bg-golf-green-50 transition shadow-lg;
+  }
+
+  /* Feature card hover effects */
+  .feature-card {
+    @apply bg-gradient-to-br from-golf-green-50 to-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1;
+  }
+
+  /* Golf ball bullet points */
+  .golf-bullet {
+    @apply relative pl-8;
+  }
+
+  .golf-bullet::before {
+    content: "⛳";
+    @apply absolute left-0 top-0;
+  }
+}
+
+@layer utilities {
+  /* Grass texture overlay */
+  .grass-texture {
+    background-image: url('../images/grass-bg.jpeg');
+    background-size: cover;
+    background-position: center;
+  }
+
+  /* Text shadow for better readability on grass background */
+  .text-shadow {
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Smooth fade-in animation */
+  .fade-in {
+    animation: fadeIn 0.5s ease-in;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Parallax effect helper */
+  .parallax {
+    background-attachment: fixed;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+}
+
+/* Smooth scroll padding for fixed nav */
+:target {
+  scroll-margin-top: 80px;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-golf-green-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-golf-green-600 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-golf-green-700;
+}

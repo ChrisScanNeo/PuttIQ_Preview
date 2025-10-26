@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ImageBackground, Image, Dimensions, Platform, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { Asset } from 'expo-asset';
 import { useVideoSyncDetector } from '../hooks/useVideoSyncDetector';
 import { loadBpmPreferences, saveBpmPreference } from '../services/auth';
+import { infoDocumentContent } from '../src/content/infoDocument';
 
 // Dynamic sizing calculations
 const CONTROL_BARS_BOTTOM = 10; // Distance from screen bottom to control bars container
@@ -16,8 +16,6 @@ const VIDEO_HEIGHT = 46.5; // Video bar height (50% taller)
 const VIDEO_BORDER = 0; // No border for transparent videos
 const BALL_TOP_GAP = 0; // Gap between video bar and ball (ball image has built-in padding)
 const BALL_BOTTOM_GAP = 35; // Gap between ball and BPM bar top
-
-const INFO_DOCUMENT = require('../Documents/UI/Info.md');
 
 export default function HomeScreen({ user, onReady = () => {} }) {
   const [soundType, setSoundType] = useState('tone'); // 'tone', 'beat', 'wind'
@@ -348,7 +346,7 @@ export default function HomeScreen({ user, onReady = () => {} }) {
     bpm,
     videoPlayer: player,
     debugMode: true, // Enable verbose logging for diagnostics
-    listenDelayMs: 380,
+    listenDelayMs: 500,
     micGain: 3.0,
     spikeHoldFrames: 2,
     energyThreshold: 1.2,
@@ -480,7 +478,7 @@ export default function HomeScreen({ user, onReady = () => {} }) {
   // Position ball: bottom offset = distance to BPM bar top + gap
   const ballBottomOffset = bpmBarTopFromBottom + BALL_BOTTOM_GAP;
 
-  const loadInfoDocument = async () => {
+  const loadInfoDocument = () => {
     if (infoContent || infoLoading) {
       return;
     }
@@ -489,14 +487,7 @@ export default function HomeScreen({ user, onReady = () => {} }) {
       setInfoLoading(true);
       setInfoError(null);
 
-      const asset = Asset.fromModule(INFO_DOCUMENT);
-      if (!asset.downloaded) {
-        await asset.downloadAsync();
-      }
-
-      const response = await fetch(asset.localUri ?? asset.uri);
-      const text = await response.text();
-      setInfoContent(text);
+      setInfoContent(infoDocumentContent);
     } catch (err) {
       console.error('Failed to load info document:', err);
       setInfoError('Unable to load the information guide. Please try again.');
@@ -1055,9 +1046,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   infoButtonCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: '#fff',
     borderWidth: 2,
     borderColor: '#333',
@@ -1070,7 +1061,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   infoButtonLabel: {
-    fontSize: 32,
+    fontSize: 16,
     fontWeight: '700',
     color: '#333',
   },

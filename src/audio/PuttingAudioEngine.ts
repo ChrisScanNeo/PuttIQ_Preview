@@ -82,7 +82,7 @@ export class PuttingAudioEngine {
 
       for (let i = 0; i < this.poolSize; i++) {
         try {
-          const player = createAudioPlayer(source);
+          const player = createAudioPlayer(source) as any;
 
           // Debug: Check what type of player we got
           if (i === 0) {
@@ -91,11 +91,7 @@ export class PuttingAudioEngine {
           }
 
           // Set volume
-          if (player.setVolumeAsync) {
-            player.setVolumeAsync(0.8);
-          } else {
-            player.volume = 0.8;
-          }
+          player.volume = 0.8;
 
           pool.push({ player, inUse: false });
           this.log(`Created player ${i} for ${soundKey}`);

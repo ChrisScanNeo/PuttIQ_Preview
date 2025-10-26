@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="PuttIQ - Master your putting rhythm with video-based timing training and real-time feedback">
+    <meta name="keywords" content="golf, putting, rhythm trainer, golf app, putting tempo">
+    <title>PuttIQ - Master Your Putting Rhythm</title>
+
+    <!-- Tailwind CSS -->
+    <link rel="stylesheet" href="./css/styles.css">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="./images/app-icon.png">
+</head>
+<body class="font-sans antialiased text-gray-900 bg-golf-beige">
+
+    <!-- Navigation -->
+    <nav class="fixed w-full top-0 z-50 bg-golf-green-800/95 backdrop-blur-sm shadow-lg">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between w-full">
+                <div class="flex space-x-6 lg:space-x-8">
+                    <a href="#features" class="text-white hover:text-golf-green-200 transition text-sm lg:text-base">Features</a>
+                    <a href="#how-it-works" class="text-white hover:text-golf-green-200 transition text-sm lg:text-base">How It Works</a>
+                    <a href="#download" class="text-white hover:text-golf-green-200 transition text-sm lg:text-base">Download</a>
+                    <a href="./support.html" class="text-white hover:text-golf-green-200 transition text-sm lg:text-base">Support</a>
+                </div>
+                <a href="#download" class="bg-white text-golf-green-700 px-6 lg:px-8 py-2 rounded-full font-semibold hover:bg-golf-green-100 transition shadow-lg text-sm lg:text-base whitespace-nowrap">
+                    Get the App
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative h-screen flex items-center justify-center overflow-hidden">
+        <!-- Grass Background with Overlay -->
+        <div class="absolute inset-0 bg-grass bg-cover bg-center">
+            <div class="absolute inset-0 bg-gradient-to-b from-golf-green-900/80 via-golf-green-800/70 to-golf-green-900/90"></div>
+        </div>
+
+        <!-- Hero Content -->
+        <div class="relative z-10 text-center px-6 max-w-5xl mx-auto">
+            <img src="./images/logo.jpg" alt="PuttIQ" class="h-48 w-48 md:h-56 md:w-56 mx-auto mb-8 rounded-3xl shadow-2xl ring-4 ring-white/30">
+
+            <h1 class="text-5xl md:text-7xl font-extrabold text-white mb-6 leading-tight">
+                Master Your <span class="text-golf-green-300">Putting Rhythm</span>
+            </h1>
+
+            <p class="text-xl md:text-2xl text-golf-green-100 mb-10 max-w-3xl mx-auto">
+                Visual rhythm training meets precision timing feedback. Perfect your putting tempo with video-based timing bars and real-time accuracy analysis.
+            </p>
+
+            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <a href="#download" class="inline-flex items-center bg-white text-golf-green-800 px-8 py-4 rounded-full font-bold text-lg hover:bg-golf-green-100 transition shadow-xl transform hover:scale-105">
+                    <svg class="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.09997 22C7.78997 22.05 6.79997 20.68 5.95997 19.47C4.24997 17 2.93997 12.45 4.69997 9.39C5.56997 7.87 7.12997 6.91 8.81997 6.88C10.1 6.86 11.32 7.75 12.11 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/>
+                    </svg>
+                    Download on App Store
+                </a>
+
+                <a href="#how-it-works" class="inline-flex items-center bg-golf-green-700/50 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-golf-green-700/70 transition shadow-xl backdrop-blur-sm">
+                    Learn More
+                    <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+
+        <!-- Scroll Indicator -->
+        <div class="absolute bottom-10 left-1/2 transform -translate-x-1/2 animate-bounce">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+            </svg>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-20 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-bold text-golf-green-800 mb-4">Why PuttIQ?</h2>
+                <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                    Train like a pro with cutting-edge rhythm technology designed specifically for golfers
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="bg-gradient-to-br from-golf-green-50 to-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
+                    <div class="bg-golf-green-600 w-16 h-16 rounded-full flex items-center justify-center mb-6">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-golf-green-800 mb-3">Video-Based Timing</h3>
+                    <p class="text-gray-600">
+                        Watch a moving timing bar synchronized with audio cues. Adjustable BPM from 70-80 to match your natural rhythm.
+                    </p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="bg-gradient-to-br from-golf-green-50 to-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
+                    <div class="bg-golf-green-600 w-16 h-16 rounded-full flex items-center justify-center mb-6">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-golf-green-800 mb-3">Listen Mode</h3>
+                    <p class="text-gray-600">
+                        Advanced microphone detection captures your putter strike and shows exactly when you made contact.
+                    </p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="bg-gradient-to-br from-golf-green-50 to-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
+                    <div class="bg-golf-green-600 w-16 h-16 rounded-full flex items-center justify-center mb-6">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-golf-green-800 mb-3">Color-Coded Feedback</h3>
+                    <p class="text-gray-600">
+                        Green for perfect (±50ms), yellow for good, red for needs work. Know instantly if you're on tempo.
+                    </p>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="bg-gradient-to-br from-golf-green-50 to-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
+                    <div class="bg-golf-green-600 w-16 h-16 rounded-full flex items-center justify-center mb-6">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-golf-green-800 mb-3">Multiple Sound Types</h3>
+                    <p class="text-gray-600">
+                        Choose from Tone, Beat, or Wind sounds. Find the audio cue that works best for your practice style.
+                    </p>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="bg-gradient-to-br from-golf-green-50 to-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
+                    <div class="bg-golf-green-600 w-16 h-16 rounded-full flex items-center justify-center mb-6">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-golf-green-800 mb-3">No Login Required</h3>
+                    <p class="text-gray-600">
+                        Start training immediately. Your settings are saved locally - no account, no hassle.
+                    </p>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="bg-gradient-to-br from-golf-green-50 to-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
+                    <div class="bg-golf-green-600 w-16 h-16 rounded-full flex items-center justify-center mb-6">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-golf-green-800 mb-3">Works Offline</h3>
+                    <p class="text-gray-600">
+                        Practice anywhere - on the course, at home, or at the practice green. No internet connection needed.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="py-20 bg-gradient-to-br from-golf-green-50 via-white to-golf-green-50">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-bold text-golf-green-800 mb-4">How It Works</h2>
+                <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                    Three simple steps to improve your putting consistency
+                </p>
+            </div>
+
+            <div class="max-w-4xl mx-auto">
+                <!-- Step 1 -->
+                <div class="flex flex-col md:flex-row items-center gap-8 mb-16">
+                    <div class="flex-shrink-0 w-24 h-24 bg-golf-green-600 rounded-full flex items-center justify-center text-4xl font-bold text-white shadow-lg">
+                        1
+                    </div>
+                    <div class="flex-1 text-center md:text-left">
+                        <h3 class="text-2xl font-bold text-golf-green-800 mb-3">Choose Your Rhythm</h3>
+                        <p class="text-gray-600 text-lg">
+                            Select your preferred BPM (70-80) and sound type. The app displays a visual timing bar that moves in sync with audio beats.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="flex flex-col md:flex-row items-center gap-8 mb-16">
+                    <div class="flex-shrink-0 w-24 h-24 bg-golf-green-600 rounded-full flex items-center justify-center text-4xl font-bold text-white shadow-lg">
+                        2
+                    </div>
+                    <div class="flex-1 text-center md:text-left">
+                        <h3 class="text-2xl font-bold text-golf-green-800 mb-3">Enable Listen Mode</h3>
+                        <p class="text-gray-600 text-lg">
+                            Turn on the microphone detection feature. The app will listen for your putter strike after the third beat.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="flex flex-col md:flex-row items-center gap-8">
+                    <div class="flex-shrink-0 w-24 h-24 bg-golf-green-600 rounded-full flex items-center justify-center text-4xl font-bold text-white shadow-lg">
+                        3
+                    </div>
+                    <div class="flex-1 text-center md:text-left">
+                        <h3 class="text-2xl font-bold text-golf-green-800 mb-3">Get Instant Feedback</h3>
+                        <p class="text-gray-600 text-lg">
+                            See exactly when you struck the ball with color-coded accuracy. Perfect timing shows green, helping you dial in your tempo.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section id="download" class="py-20 bg-golf-green-800 relative overflow-hidden">
+        <div class="absolute inset-0 bg-grass bg-cover bg-center opacity-20"></div>
+        <div class="container mx-auto px-6 relative z-10">
+            <div class="text-center max-w-3xl mx-auto">
+                <h2 class="text-4xl md:text-5xl font-bold text-white mb-6">Ready to Improve Your Game?</h2>
+                <p class="text-xl text-golf-green-100 mb-10">
+                    Download PuttIQ now and start mastering your putting rhythm today. Available on iOS.
+                </p>
+
+                <div class="flex flex-col sm:flex-row gap-6 justify-center items-center">
+                    <a href="https://apps.apple.com/app/puttiq" target="_blank" class="inline-flex items-center bg-white text-golf-green-800 px-10 py-5 rounded-2xl font-bold text-xl hover:bg-golf-green-100 transition shadow-2xl transform hover:scale-105">
+                        <svg class="w-8 h-8 mr-3" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.09997 22C7.78997 22.05 6.79997 20.68 5.95997 19.47C4.24997 17 2.93997 12.45 4.69997 9.39C5.56997 7.87 7.12997 6.91 8.81997 6.88C10.1 6.86 11.32 7.75 12.11 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/>
+                        </svg>
+                        Download on App Store
+                    </a>
+
+                    <!-- Coming Soon Badge -->
+                    <div class="inline-flex items-center bg-gray-700/50 text-gray-300 px-10 py-5 rounded-2xl font-bold text-xl backdrop-blur-sm">
+                        <svg class="w-8 h-8 mr-3" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M17.523 15.341c-.238-.008-1.893-.092-3.894-1.03-2-.937-3.792-3.168-5.01-5.567-.838-1.649-1.066-2.909-1.068-3.29-.002-.38.063-.784.234-1.107.306-.577.994-1.15 1.677-1.378C9.75 2.82 10.033 2.75 10.293 2.75c.175 0 .344.02.494.057.336.08.616.255.797.49.213.276.369.617.49.979.25.746.471 1.568.608 2.308.061.33.082.603.061.844-.032.363-.181.648-.43.848-.136.109-.307.208-.485.308-.177.1-.363.2-.523.33-.156.125-.266.291-.294.488-.03.207.015.452.147.748.546 1.23 1.28 2.233 2.188 3.001.904.764 1.958 1.327 3.197 1.716.37.116.683.093.906-.067.224-.16.405-.385.561-.636.155-.25.293-.515.436-.767.14-.246.299-.469.518-.622.43-.302.967-.363 1.445-.16.484.206 1.009.534 1.48.855.478.324.916.656 1.256.948.167.145.3.286.395.43.189.289.268.634.223.982-.072.553-.483 1.195-1.088 1.603-.604.408-1.394.619-2.142.547z"/>
+                        </svg>
+                        Android Coming Soon
+                    </div>
+                </div>
+
+                <div class="mt-12 pt-8 border-t border-white/20">
+                    <p class="text-golf-green-200 mb-4">Requirements</p>
+                    <div class="flex flex-wrap justify-center gap-6 text-white">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span>iOS 16.0 or later</span>
+                        </div>
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span>Microphone access for Listen Mode</span>
+                        </div>
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span>Works on iPhone & iPad</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-golf-green-900 text-white py-12">
+        <div class="container mx-auto px-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                <!-- Brand -->
+                <div>
+                    <div class="mb-4">
+                        <img src="./images/logo.jpg" alt="PuttIQ" class="h-32 w-auto max-w-full rounded-lg">
+                    </div>
+                    <p class="text-golf-green-200">
+                        Master your putting rhythm with video-based timing training.
+                    </p>
+                </div>
+
+                <!-- Links -->
+                <div>
+                    <h4 class="font-bold text-lg mb-4">Quick Links</h4>
+                    <ul class="space-y-2">
+                        <li><a href="#features" class="text-golf-green-200 hover:text-white transition">Features</a></li>
+                        <li><a href="#how-it-works" class="text-golf-green-200 hover:text-white transition">How It Works</a></li>
+                        <li><a href="#download" class="text-golf-green-200 hover:text-white transition">Download</a></li>
+                        <li><a href="./support.html" class="text-golf-green-200 hover:text-white transition">Support</a></li>
+                    </ul>
+                </div>
+
+                <!-- Legal -->
+                <div>
+                    <h4 class="font-bold text-lg mb-4">Legal</h4>
+                    <ul class="space-y-2">
+                        <li><a href="./privacy.html" class="text-golf-green-200 hover:text-white transition">Privacy Policy</a></li>
+                        <li><a href="./support.html" class="text-golf-green-200 hover:text-white transition">Contact Us</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="border-t border-golf-green-700 pt-8 text-center text-golf-green-300">
+                <p>&copy; 2025 PuttIQ. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>
