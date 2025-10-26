@@ -937,6 +937,25 @@ export class VideoSyncDetectorV2 {
         if (this.opts.debugMode) {
           console.log('🎧 Using ExpoPlayAudioStream for audio capture (defaultToSpeaker enabled)');
         }
+
+        // CRITICAL: Set audio mode to recording BEFORE calling native module
+        // This prevents expo-video from reasserting .playback during tap installation
+        // and fixes error -10868 (AVAudioIONodeImpl::SetOutputFormat crash)
+        if (this.opts.debugMode) {
+          console.log('🔧 Setting Audio mode to recording before native call...');
+        }
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+          interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+          shouldDuckAndroid: false,
+        });
+        if (this.opts.debugMode) {
+          console.log('✅ Audio mode set to recording');
+        }
+
         await this.startAudioStreamRecording();
       } else {
         // Configure audio mode for recording (required by expo-av)

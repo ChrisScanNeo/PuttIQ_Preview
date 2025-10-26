@@ -1,8 +1,8 @@
 diff --git a/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift b/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
-index c38bc1b..7221b73 100644
+index c38bc1b..11bafcf 100644
 --- a/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
 +++ b/node_modules/@cjblack/expo-audio-stream/ios/AudioSessionManager.swift
-@@ -378,20 +378,29 @@ class AudioSessionManager {
+@@ -378,20 +378,30 @@ class AudioSessionManager {
          
          do {
              let session = AVAudioSession.sharedInstance()
@@ -11,12 +11,13 @@ index c38bc1b..7221b73 100644
 +
 +            // CRITICAL: Set audio session to .playAndRecord BEFORE accessing inputNode
 +            // This prevents error -10868 when expo-video has set session to .playback
++            // NOTE: Removed .allowBluetoothA2DP for iOS 18 compatibility (silent downgrade issue)
 +            Logger.debug("Debug: Setting audio session to .playAndRecord mode")
-+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
++            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
 +            try session.setPreferredSampleRate(newSettings.sampleRate)
 +            try session.setPreferredIOBufferDuration(1024 / newSettings.sampleRate)
 +            try session.setActive(true)
-+            Logger.debug("Debug: Audio session activated successfully")
++            Logger.debug("Debug: Session configured - category: \(session.category), sampleRate: \(session.sampleRate), inputAvailable: \(session.isInputAvailable)")
  
 -            // Check if the input node supports the desired format
 +            // NOW it's safe to check the input node format (session is configured for recording)
@@ -41,7 +42,7 @@ index c38bc1b..7221b73 100644
              
              let actualSampleRate = session.sampleRate
              if actualSampleRate != newSettings.sampleRate {
-@@ -414,6 +423,28 @@ class AudioSessionManager {
+@@ -414,6 +424,54 @@ class AudioSessionManager {
              return StartRecordingResult(error: "Error: Failed to create audio format with the specified bit depth.")
          }
  
@@ -66,10 +67,44 @@ index c38bc1b..7221b73 100644
 +        Logger.debug("Debug: Input node format - SR: \(inputNodeFormat.sampleRate)Hz, CH: \(inputNodeFormat.channelCount)")
 +        Logger.debug("Debug: Requested format - SR: \(audioFormat.sampleRate)Hz, CH: \(audioFormat.channelCount)")
 +
-+        // Step 4: Install tap (this can throw Obj-C exception if format is incompatible)
++        // Step 4: CRITICAL - Re-validate audio session right before tap installation
++        // If expo-video recaptured the session, re-assert .playAndRecord to prevent crash
++        do {
++            let session = AVAudioSession.sharedInstance()
++            let currentCategory = session.category
++            let isInputAvailable = session.isInputAvailable
++            Logger.debug("Debug: Pre-tap validation - category: \(currentCategory), inputAvailable: \(isInputAvailable)")
++
++            if currentCategory != .playAndRecord || !isInputAvailable {
++                Logger.debug("Warning: Audio session was changed! Re-asserting .playAndRecord...")
++                do {
++                    // Re-apply WITHOUT .allowBluetoothA2DP (iOS 18 compatibility)
++                    try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
++                    try session.setActive(true)
++                    Logger.debug("Debug: Audio session re-asserted successfully - category: \(session.category)")
++                } catch let reAssertError {
++                    // Fail early with descriptive error instead of letting Obj-C exception crash the app
++                    Logger.debug("Error: Failed to re-assert audio session: \(reAssertError.localizedDescription)")
++                    return StartRecordingResult(error: "Error: Audio session conflict - unable to start recording. Please close and reopen the app. Details: \(reAssertError.localizedDescription)")
++                }
++            } else {
++                Logger.debug("Debug: Session validation passed - ready to install tap")
++            }
++        }
++
++        // Step 5: Install tap (this can throw Obj-C exception if format is incompatible)
++        Logger.debug("Debug: About to install tap...")
          audioEngine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: audioFormat) { [weak self] (buffer, time) in
              guard let self = self else {
                  Logger.debug("Error: File URL or self is nil during buffer processing.")
+@@ -426,6 +484,7 @@ class AudioSessionManager {
+             self.processAudioBuffer(buffer, fileURL: self.recordingFileURL!)
+             self.lastBufferTime = time
+         }
++        Logger.debug("Debug: ✅ Tap installed successfully!")
+ 
+         recordingFileURL = createRecordingFile()
+         if recordingFileURL == nil {
 diff --git a/node_modules/@cjblack/expo-audio-stream/ios/AudioUtils.swift b/node_modules/@cjblack/expo-audio-stream/ios/AudioUtils.swift
 index f9559a8..eee0178 100644
 --- a/node_modules/@cjblack/expo-audio-stream/ios/AudioUtils.swift
@@ -82,15 +117,19 @@ index f9559a8..eee0178 100644
  public enum SoundPlayerError: Error {
      case invalidBase64String
 diff --git a/node_modules/@cjblack/expo-audio-stream/ios/ExpoPlayAudioStreamModule.swift b/node_modules/@cjblack/expo-audio-stream/ios/ExpoPlayAudioStreamModule.swift
-index a3d0c7e..be63916 100644
+index a3d0c7e..b9628b3 100644
 --- a/node_modules/@cjblack/expo-audio-stream/ios/ExpoPlayAudioStreamModule.swift
 +++ b/node_modules/@cjblack/expo-audio-stream/ios/ExpoPlayAudioStreamModule.swift
-@@ -365,7 +365,7 @@ public class ExpoPlayAudioStreamModule: Module, AudioStreamManagerDelegate, Micr
+@@ -364,9 +364,10 @@ public class ExpoPlayAudioStreamModule: Module, AudioStreamManagerDelegate, Micr
+         if self.isAudioSessionInitialized { return }
  
          let audioSession = AVAudioSession.sharedInstance()
++        // Removed .allowBluetoothA2DP for iOS 18 compatibility (silent downgrade issue)
          try audioSession.setCategory(
 -            .playAndRecord, mode: .voiceChat,
+-            options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
 +            .playAndRecord, mode: .default,
-             options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
++            options: [.defaultToSpeaker, .allowBluetooth])
          if let settings = recordingSettings {
              try audioSession.setPreferredSampleRate(settings.sampleRate)
+             try audioSession.setPreferredIOBufferDuration(1024 / settings.sampleRate)
